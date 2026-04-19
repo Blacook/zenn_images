@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 240" style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F8FAFC;border-radius:12px;border:1.5px solid #E2E8F0;display:block;margin:16px auto;max-width:700px;">
+  <defs>
+    <linearGradient id="tubeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="25%" stop-color="#F97316"/>
+      <stop offset="50%" stop-color="#EAB308"/>
+      <stop offset="75%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+  </defs>
+  <!-- Title -->
+  <text x="350" y="20" fill="#0F172A" font-size="13" font-weight="bold" text-anchor="middle">双対超伝導体モデル：磁気モノポール凝縮とフラックス・チューブ形成</text>
+  <!-- Suppressed field outside tube (wavy lines suggesting exclusion) -->
+  <path d="M130,55 Q155,45 180,55 Q205,45 230,55 Q255,45 280,55 Q305,45 330,55 Q355,45 380,55 Q405,45 430,55 Q455,45 480,55 Q505,45 530,55 Q555,45 570,55"
+        fill="none" stroke="#CBD5E1" stroke-width="1.2" stroke-dasharray="3,2"/>
+  <text x="350" y="45" fill="#94A3B8" font-size="9" text-anchor="middle">カラー電場は外部に漏れない（マイスナー効果の双対）</text>
+  <path d="M130,175 Q155,185 180,175 Q205,185 230,175 Q255,185 280,175 Q305,185 330,175 Q355,185 380,175 Q405,185 430,175 Q455,185 480,175 Q505,185 530,175 Q555,185 570,175"
+        fill="none" stroke="#CBD5E1" stroke-width="1.2" stroke-dasharray="3,2"/>
+  <!-- Flux tube body -->
+  <rect x="118" y="90" width="464" height="50" rx="8" fill="url(#tubeGrad)" fill-opacity="0.85"/>
+  <!-- Field arrows inside tube -->
+  <text x="195" y="119" fill="white" font-size="18" font-weight="bold" text-anchor="middle">→</text>
+  <text x="260" y="119" fill="white" font-size="18" font-weight="bold" text-anchor="middle">→</text>
+  <text x="325" y="119" fill="white" font-size="18" font-weight="bold" text-anchor="middle">→</text>
+  <text x="390" y="119" fill="white" font-size="18" font-weight="bold" text-anchor="middle">→</text>
+  <text x="455" y="119" fill="white" font-size="18" font-weight="bold" text-anchor="middle">→</text>
+  <text x="525" y="119" fill="white" font-size="18" font-weight="bold" text-anchor="middle">→</text>
+  <!-- Tube label -->
+  <text x="350" y="158" fill="#92400E" font-size="12" font-weight="bold" text-anchor="middle">フラックス・チューブ（絆）</text>
+  <text x="350" y="172" fill="#78716C" font-size="10" text-anchor="middle">蓄積エネルギー ∝ σr（距離に比例して増大・断ち切れない力の源）</text>
+  <!-- Magnetic monopoles (purple circles) around tube = 嫉妬・独占欲 -->
+  <circle cx="155" cy="78" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="215" cy="74" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="280" cy="78" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="350" cy="73" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="420" cy="78" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="485" cy="74" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="545" cy="78" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="155" cy="152" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="215" cy="156" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="280" cy="152" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="350" cy="157" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="420" cy="152" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="485" cy="156" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <circle cx="545" cy="152" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <!-- Monopole legend -->
+  <circle cx="28" cy="73" r="6" fill="#7C3AED" fill-opacity="0.75"/>
+  <text x="38" y="77" fill="#6D28D9" font-size="9">磁気モノポール（嫉妬・独占欲の凝縮）</text>
+  <!-- Particles: Person A (red) and Person B (blue) -->
+  <circle cx="83" cy="115" r="32" fill="#EF4444" stroke="#DC2626" stroke-width="2.5"/>
+  <text x="83" y="112" fill="white" font-size="11" font-weight="bold" text-anchor="middle">個人 A</text>
+  <text x="83" y="124" fill="#FEE2E2" font-size="9" text-anchor="middle">クォーク q</text>
+  <circle cx="617" cy="115" r="32" fill="#3B82F6" stroke="#2563EB" stroke-width="2.5"/>
+  <text x="617" y="112" fill="white" font-size="11" font-weight="bold" text-anchor="middle">個人 B</text>
+  <text x="617" y="124" fill="#DBEAFE" font-size="9" text-anchor="middle">反クォーク q̄</text>
+  <!-- Distance annotation -->
+  <line x1="83" y1="200" x2="617" y2="200" stroke="#475569" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="350" y="215" fill="#475569" font-size="10" text-anchor="middle">距離 r が増えるほど σr のエネルギーが蓄積 → 断ち切れない</text>
+  <text x="83" y="213" fill="#64748B" font-size="9" text-anchor="middle">|</text>
+  <text x="617" y="213" fill="#64748B" font-size="9" text-anchor="middle">|</text>
+  <!-- Distance arrows -->
+  <line x1="100" y1="200" x2="610" y2="200" stroke="#94A3B8" stroke-width="1"/>
+</svg>
