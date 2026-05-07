@@ -3,6 +3,7 @@
 Thumbs.db
 
 # エディタ関連
+.claude/
 .vscode/
 .idea/
 *.swp
