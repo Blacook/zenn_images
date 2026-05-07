@@ -3,7 +3,7 @@ title: VPC閉域（エアギャップ）環境のcode-serverでClaude CodeをBed
 emoji: "🔒"
 type: "tech"
 topics: ["claudecode", "bedrock", "extension", "vscode", "security"]
-published: false
+published: true
 ---
 
 ## はじめに
