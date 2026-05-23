@@ -29,15 +29,21 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### Eval は Input/Model/Output/Grader/Score の5要素に分解する
 
+:::message
 **原則**: eval の最小構成は `Input / Model / Output / Grader / Score` の 5 要素で語れる。最初の 3 つはこれまでの推論パイプラインそのものであり、eval が追加するのは「Output を Grader に渡して Score を返す」最後の 2 ステップだけである。この最小単位を維持することで、評価対象がモデルなのか、grader なのか、タスク設計なのかを切り分けやすくなる。
+:::
 
+:::message alert
 **アンチパターン**: 「何を評価しているか」を明確にしないまま eval スクリプトを書き始めると、grader の責務とタスク設計が混ざり、結果の解釈が不能になる。runner に表示処理を埋め込んだり、grader が複数の独立した観点を 1 関数で採点したりすると、再利用も差し替えも難しくなる。
+:::
 
 **具体例**: 公式ハーネスは runner と grader を明示的に分離している。`run_eval()` はデータ構造を返すだけで、`print_summary()` は別関数。grader は `GRADER_REGISTRY` という dict にプラグインされる構造で、新しい grader タイプは「1 関数 + 1 dict エントリ」で追加できる。agent も `agent_fn` 引数で受け取り、mock 差し替えや instrumentation を可能にする。
 
 ### 3 層 grader を組み合わせる
 
+:::message
 **原則**: grader は **Code → Model → Human** の順に検討する。判定基準が明確で決定的に書けるものは全部 code grader で済ませ、open-ended なものだけ LLM-as-Judge に持ち上げ、最終ゲートだけ human にする。実務上の比率の目安は **Code 80% / Model 15% / Human 5%**。
+:::
 
 | 層 | 何で検証するか | 得意領域 | コスト | 信頼性 |
 |---|---|---|---|---|
@@ -45,19 +51,25 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 | **Model grader (LLM-as-Judge)** | 別 LLM に基準を渡して採点 | トーン、完成度、指示遵守、open-ended 応答 | 有料 / 数百ms | 中（モデル依存） |
 | **Human grader** | 人間レビュー | 安全性最終承認、ローンチ前ゲート、Judge 校正サンプル | 高 / 遅い | 高だがスケールしない |
 
+:::message alert
 **アンチパターン**: 最初から LLM-as-Judge に全タスクを通すのは過剰投資である。exact match や `response_contains` で決着するタスクに Judge 呼び出しを乗せると、コストが線形に増え、grader 自身の非決定性で eval が flaky になる。逆に Human grader を「全件レビュー」と捉えるのも誤りで、Human はスケールしない。
+:::
 
 **具体例**: 公式ハーネスの code grader は `response_contains`（最終応答に文字列を含むか）、`response_numeric`（数値が許容範囲内か）、`tool_use`（特定の tool を特定の引数で呼んだか）の 3 種。各 grader はバイナリスコア（0/1）と理由を返し、タスクは「全 grader / 全 check の AND」で pass する。Human grader は出荷ゲートと、Model grader を信頼してよいかの校正サンプル（10〜30 件）として運用する。
 
 ### Judge モデルは「審判の専門性」で選ぶ
 
+:::message
 **原則**: LLM-as-Judge のモデル選定は「常に最強モデル」が正解ではない。**評価対象タスクの難易度**で決める。高頻度・反復・パターンマッチで足りる評価には Haiku、文脈推論や open-ended な解釈を要する評価には Sonnet / Opus を充てる。
+:::
 
+:::message alert
 **アンチパターン**:
 
 - 「念のため Opus にしておく」と全 Judge を最上位モデルにすると、Judge コストが本番推論より高くなる。
 - 逆に難しい評価まで Haiku で済ませると、「チェックボックスは満たすが本来の意図を取り違える」誤判定が増える。
 - Judge モデルを差し替える際に AB テストを取らないと、スコア変動が「エージェントの劣化」なのか「Judge の厳しさ変化」なのか切り分けられない。
+:::
 
 **具体例**:
 
@@ -68,7 +80,9 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### 3-layer responsibility model: failure を fix location にマップする
 
+:::message
 **原則**: エージェントの失敗は「どこを直すか」で **モチベーション付け / 文脈付け / 安全網** の 3 層に振り分けられる。失敗パターンをこの層にマップすることで、修正先が決定される。
+:::
 
 | 失敗パターン | 効く対策のレイヤー | 直す場所 |
 |---|---|---|
@@ -77,15 +91,21 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 | ツールエラーから回復しない | 安全網 | tool 実装（説明的な戻り値）|
 | 知識不足 | 文脈付け | tool description（カタログ等の文脈情報）|
 
+:::message alert
 **アンチパターン**: system prompt にカタログを列挙する、tool description に役割宣言を書く、tool 実装で `KeyError` を投げるだけで終わる――いずれも層を取り違えた修正であり、エージェントが自己回復できない経路を残す。`empty list` や生の例外をそのまま返すと、エージェントは「ツールが落ちた」以上の情報を得られない。
+:::
 
 **具体例**: `boutique` の `get_product` で未発見時に `KeyError` を投げる代わりに `{"available_products": [...], "hint": "..."}` 相当の「候補一覧を含むエラーメッセージ文字列」を返す設計にすると、エージェントは synonym（`shoes` → `sneakers`）への自己回復ルートを得る。system prompt 側は `"You are a helpful assistant."` から `"ALWAYS call get_product to look up a price. Never guess."` に書き換える。boutique では 50% → 100% への伸びの大半がこの system prompt のツール強制使用宣言で説明される。
 
 ### 構築と評価は別人格で書く
 
+:::message
 **原則**: build を書いた人格が同じく eval も書くと、無意識のうちに「自分が作ったものが通る方向」に grader が寄る。eval は build と切り離した責務として、最初から別の場所・別の人・別の時間で書く。
+:::
 
+:::message alert
 **アンチパターン**: 同一エンジニアが build と eval を同タイミングで書くと、「直しやすい失敗」だけがテスト化され、ビジネスに致命的なケース（競合商品名を口にする、価格を約束する、off-topic）が漏れる。grader が build の言い訳を内包してしまう状態である。
+:::
 
 **具体例**:
 
@@ -95,9 +115,13 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### 非決定性は num_runs と分布で扱う
 
+:::message
 **原則**: LLM は temperature 0 でも非決定的に振る舞う。**平均値だけ**で品質を語らない。`num_runs=5` 程度で複数回走らせ、**pass@k**（最低 1 回通った率）と **pass^k**（毎回通った率）を分けて見て、分布（min/max/mean）を必ず観察する。
+:::
 
+:::message alert
 **アンチパターン**: 「平均 90% だから OK」と判断したまま出荷する。同じ平均 90% でも全タスクが 90% 安定なのと、半数が 100% / 半数が 50% を行き来する flaky とでは、実運用での体感品質が完全に別物になる。
+:::
 
 **具体例**:
 
@@ -111,17 +135,25 @@ pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する
 
 ### Mission Control: Sonnet 主体 + Opus advisor
 
+:::message
 **原則**: エージェント階層は「常に Opus」ではなく **Sonnet 主体で走らせ、必要時のみ Opus を呼ぶ** 構成（**Mission Control / Inverted agent hierarchy**）が、コストと精度の両面で優位になりやすい。Opus への escalation 率は 5〜10% に抑えるのが目安。
+:::
 
+:::message alert
 **アンチパターン**: 主体エージェントを Opus に固定すると、トークン単価が 1 桁上がり、レイテンシも悪化する。逆にすべて Haiku で回すと、nuanced な分岐で精度が落ちる。
+:::
 
 **具体例**: Sonnet が end-to-end を駆動し、複雑な判断や安全性ゲートでのみ Opus を advisor として呼ぶ構成。コスト構造（Bootcamp で共有された Sonnet 4.5 と Opus の $/1K calls の比較）でも、Sonnet + Opus advisor は Sonnet 単体に対して数倍以内のコストで Opus 単体相当の精度に近づく。
 
 ### PM / PRD と評価を結合する
 
+:::message
 **原則**: eval は PRD のテストである。Acceptance Criteria を grader 定義に落とし、PM とドメインエキスパートが「合格条件」を共同所有する。
+:::
 
+:::message alert
 **アンチパターン**: エンジニアが単独で eval を書くと、ビジネス致命的なケース（競合品名、価格約束、トーン崩壊）が漏れる。逆に PM 側が「網羅的」と感じている自然言語 Acceptance Criteria を grader に落とさないままだと、出荷判断が vibes に戻る。
+:::
 
 **具体例**: PRD レビューと並行して `response_contains "sneakers"` のような具体的 grader 定義まで落とす。negative test（「カタログにない商品」「off-topic」「invalid な要求」）は別カテゴリで管理し、安全性スコアを通常運用スコアと別系統で残す。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新含む）のたびに `eval_results/eval_<model>_<timestamp>.json` を時系列に貯め、回帰検知のダッシュボードを持つ。
 

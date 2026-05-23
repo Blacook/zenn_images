@@ -32,9 +32,13 @@ free: true
 
 ### CLAUDE.md は「働き方の永続指示書」として設計する
 
+:::message
 **原則**: `CLAUDE.md` は毎セッションで自動的にコンテキストへ載る永続指示書である。技術スタック・強制ルール・ハマりどころ・ファイル位置をコンパクトに記述し、プロンプトでの前置きを不要にする。
+:::
 
+:::message alert
 **アンチパターン**: ロール宣言や賞賛 (「あなたはシニアエンジニアです」「最高の頭脳で」) を書き連ねる。曖昧で観測不能な指示はモデルの挙動を変えない。
+:::
 
 **ハンズオンでの具体例**: `day1/01_inventory-management/CLAUDE.md` には、`vue-expert` への委譲ルール、GitHub/Playwright MCP の使用強制、`v-for` のキーに `index` を使わない等の観測可能な制約が並ぶ。
 
@@ -65,25 +69,37 @@ free: true
 
 ### Plan Mode → 設計合意 → 実装の順序
 
+:::message
 **原則**: 複雑度のある変更は `Shift+Tab` で Plan Mode に入り、ファイル・依存・変更方針について合意してから実装に進む。コードレビューを前段の対話に置き換える。
+:::
 
+:::message alert
 **アンチパターン**: 複数ファイルにまたがる機能追加でも、いきなりコード生成させて差分レビューで巻き戻すフロー。手戻りコストが上がり、コンテキストも食う。
+:::
 
 **ハンズオンでの具体例**: 在庫管理アプリへ「予算スライダー付きの再発注タブ」を追加する課題では、Plan Mode を経由したかどうかで成果物の構造的な整合性が分かれた。Plan Mode は対象ファイル一覧と影響範囲をテキストで提示してから着手するため、不要な変更や見落としを着手前に潰せる。
 
 ### コンテキスト管理は計器を見て扱う
 
+:::message
 **原則**: `/context` でコンテキスト使用量を可視化し、80% で `/compact`、90% で `/clear` を発動する閾値運用にする。重要な事実は事前に `CLAUDE.md` 側へ逃がす。
+:::
 
+:::message alert
 **アンチパターン**: 残量を見ずに長時間セッションを継続し、終盤で品質劣化や応答の脱線が起きてから対処する。
+:::
 
 **ハンズオンでの具体例**: Playwright MCP を追加する前後で `/context` を叩くと、ツール定義だけでまとまった量の枠が削られることが数値で見える。経験者の指摘では「15 個前後の MCP で context lock が起きる」とされ、`/compact keep the details of the restocking feature` のように残したい情報を指定して圧縮できる。
 
 ### MCP は引き算で設計する
 
+:::message
 **原則**: プロジェクトごとに `.mcp.json` を絞り、使う MCP のみを宣言する。グローバル導入は避け、用途が終わったら外す。
+:::
 
+:::message alert
 **アンチパターン**: 「便利そうだから」で MCP を足し続け、ツール定義の総量でコンテキスト枠を圧迫する。
+:::
 
 **ハンズオンでの具体例**: Playwright MCP の追加は、Claude を CLI の外に連れ出す最初のステップとして実演される。
 
@@ -96,9 +112,13 @@ free: true
 
 ### Skills の description は索引である
 
+:::message
 **原則**: Skills は progressive disclosure で、必要になった瞬間に本文が開かれる。入口の `description` は「いつ・どんな入力に対して呼び出すか」のメタデータとして書く。
+:::
 
+:::message alert
 **アンチパターン**: `General-purpose helper for Vue stuff` のような曖昧表現。Claude が呼び出し場面を判定できず、スキルが死蔵される。
+:::
 
 **ハンズオンでの具体例**: 良い description と悪い description の対比は次のとおり。
 
@@ -111,9 +131,13 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 
 ### 規律は Hooks で機械化する
 
+:::message
 **原則**: format/lint/typecheck などの規律はプロンプトで頼まず、`PostToolUse` フックで自動実行する。Claude が壊れたコードを残せない構造にする。
+:::
 
+:::message alert
 **アンチパターン**: 「コミット前に prettier をかけて」を毎回プロンプトで頼む。忘れる、忘れさせる、レビューでの指摘が増える。
+:::
 
 **ハンズオンでの具体例**: `Edit|Write` の後段で Prettier を流すだけでも、レビュー一次対応の負荷が下がる。
 
@@ -139,17 +163,25 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 
 ### GitHub App とクラウド側エージェント連携
 
+:::message
 **原則**: `/install-github-app` で GitHub App を導入し、PR コメント `@claude ...` でクラウド側 Claude Code Review に一次対応を委ねる。ローカル CLI とクラウド側エージェントは PR を媒介として非同期に協働する。
+:::
 
+:::message alert
 **アンチパターン**: ローカルの Claude Code のみで PR レビューも自分で読む運用。レビュアの待ち時間がボトルネックになる。
+:::
 
 **ハンズオンでの具体例**: PR コメントに `@claude このバグの原因を調べて` と書くと、クラウド側エージェントが応答し、ローカルとは別の労働時間が動き出す。ハンズオンではこの非同期連携を、レビュー導線の置き換えとして体験する。
 
 ### 比較対象のあるバグ修正は強い（Reports ページ Expert Challenge）
 
+:::message
 **原則**: 「未知のバグを当てる」より「動く実装と壊れた実装の差分を埋める」タスク設計のほうが、Claude の網羅性は跳ね上がる。動く参照実装を明示する。
+:::
 
+:::message alert
 **アンチパターン**: バグの症状だけを列挙して投げる。Claude は申告された項目に集中し、未申告のバグを取り逃がす。
+:::
 
 **ハンズオンでの具体例**: Reports ページの Expert Challenge では次のような指示で、申告 3 件以上のバグまで自動で洗い出される。
 
@@ -169,9 +201,13 @@ Orders are implemented for reference **.
 
 ### Subagents / Plugins / Worktrees の使い分け
 
+:::message
 **原則**: 12 ステップ最終盤の機能群はそれぞれ働き方の異なる軸を担う。Skills = 再利用可能な手順書、Subagents = 専門特化したペアプロ相手、Hooks = 規律の番人、Plugins = 機能パッケージ、Agent Teams = 並走するエージェント群、Worktrees = 実験を本流から隔離する避難所。
+:::
 
+:::message alert
 **アンチパターン**: すべてを「便利機能」として一律に評価し、どれを採用するか場当たり的に選ぶ。
+:::
 
 **ハンズオンでの具体例**: 在庫管理アプリでは `vue-expert` Subagent が `.vue` 編集に強制委譲され、Worktrees は触れないが「ダークモード試作を Worktree で隔離する」シナリオが提示される。Hooks はステップ 12 で format/typecheck フックの形で並ぶ。輪郭をつかんでおくと、現場で「ここはこれを使う」と当てがつく。
 
@@ -243,7 +279,7 @@ allowed-tools:
 
 PostToolUse Hook の最小例 (前掲)。`prettier` を `eslint`, `mypy`, `tsc` に差し替えて再利用する。
 
-## 気づき
+## よくある勘違いと気づき
 
 - **「Claude Code はターミナル上の賢いコード生成 CLI」だと思っていたが、実際には CLAUDE.md / Plan Mode / Hooks / MCP / GitHub App が連動した「働き方の設計面」だった。**コードを書く速度の話ではなく、何を約束し、何を強制し、誰に委ねるかを設計する道具だ。
 - **「MCP は多いほど良い」と思っていたが、足し算より引き算が効く道具だった。**Playwright MCP を入れる前後で `/context` を眺めると、ツール定義だけでコンテキスト枠が目に見えて削れる。15 個前後で context lock が起きるという経験則も腑に落ちた。
