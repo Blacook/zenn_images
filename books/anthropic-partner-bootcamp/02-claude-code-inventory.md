@@ -32,11 +32,11 @@ free: true
 
 ### CLAUDE.md は「働き方の永続指示書」として設計する
 
-:::message
+:::note info
 **原則**: `CLAUDE.md` は毎セッションで自動的にコンテキストへ載る永続指示書である。技術スタック・強制ルール・ハマりどころ・ファイル位置をコンパクトに記述し、プロンプトでの前置きを不要にする。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: ロール宣言や賞賛 (「あなたはシニアエンジニアです」「最高の頭脳で」) を書き連ねる。曖昧で観測不能な指示はモデルの挙動を変えない。
 :::
 
@@ -69,11 +69,11 @@ free: true
 
 ### Plan Mode → 設計合意 → 実装の順序
 
-:::message
+:::note info
 **原則**: 複雑度のある変更は `Shift+Tab` で Plan Mode に入り、ファイル・依存・変更方針について合意してから実装に進む。コードレビューを前段の対話に置き換える。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 複数ファイルにまたがる機能追加でも、いきなりコード生成させて差分レビューで巻き戻すフロー。手戻りコストが上がり、コンテキストも食う。
 :::
 
@@ -81,11 +81,11 @@ free: true
 
 ### コンテキスト管理は計器を見て扱う
 
-:::message
+:::note info
 **原則**: `/context` でコンテキスト使用量を可視化し、80% で `/compact`、90% で `/clear` を発動する閾値運用にする。重要な事実は事前に `CLAUDE.md` 側へ逃がす。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 残量を見ずに長時間セッションを継続し、終盤で品質劣化や応答の脱線が起きてから対処する。
 :::
 
@@ -93,11 +93,11 @@ free: true
 
 ### MCP は引き算で設計する
 
-:::message
+:::note info
 **原則**: プロジェクトごとに `.mcp.json` を絞り、使う MCP のみを宣言する。グローバル導入は避け、用途が終わったら外す。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「便利そうだから」で MCP を足し続け、ツール定義の総量でコンテキスト枠を圧迫する。
 :::
 
@@ -112,11 +112,11 @@ free: true
 
 ### Skills の description は索引である
 
-:::message
+:::note info
 **原則**: Skills は progressive disclosure で、必要になった瞬間に本文が開かれる。入口の `description` は「いつ・どんな入力に対して呼び出すか」のメタデータとして書く。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: `General-purpose helper for Vue stuff` のような曖昧表現。Claude が呼び出し場面を判定できず、スキルが死蔵される。
 :::
 
@@ -131,11 +131,11 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 
 ### 規律は Hooks で機械化する
 
-:::message
+:::note info
 **原則**: format/lint/typecheck などの規律はプロンプトで頼まず、`PostToolUse` フックで自動実行する。Claude が壊れたコードを残せない構造にする。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「コミット前に prettier をかけて」を毎回プロンプトで頼む。忘れる、忘れさせる、レビューでの指摘が増える。
 :::
 
@@ -163,11 +163,11 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 
 ### GitHub App とクラウド側エージェント連携
 
-:::message
+:::note info
 **原則**: `/install-github-app` で GitHub App を導入し、PR コメント `@claude ...` でクラウド側 Claude Code Review に一次対応を委ねる。ローカル CLI とクラウド側エージェントは PR を媒介として非同期に協働する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: ローカルの Claude Code のみで PR レビューも自分で読む運用。レビュアの待ち時間がボトルネックになる。
 :::
 
@@ -175,11 +175,11 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 
 ### 比較対象のあるバグ修正は強い（Reports ページ Expert Challenge）
 
-:::message
+:::note info
 **原則**: 「未知のバグを当てる」より「動く実装と壊れた実装の差分を埋める」タスク設計のほうが、Claude の網羅性は跳ね上がる。動く参照実装を明示する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: バグの症状だけを列挙して投げる。Claude は申告された項目に集中し、未申告のバグを取り逃がす。
 :::
 
@@ -201,11 +201,11 @@ Orders are implemented for reference **.
 
 ### Subagents / Plugins / Worktrees の使い分け
 
-:::message
+:::note info
 **原則**: 12 ステップ最終盤の機能群はそれぞれ働き方の異なる軸を担う。Skills = 再利用可能な手順書、Subagents = 専門特化したペアプロ相手、Hooks = 規律の番人、Plugins = 機能パッケージ、Agent Teams = 並走するエージェント群、Worktrees = 実験を本流から隔離する避難所。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: すべてを「便利機能」として一律に評価し、どれを採用するか場当たり的に選ぶ。
 :::
 

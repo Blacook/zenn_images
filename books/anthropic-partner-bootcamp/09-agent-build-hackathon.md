@@ -36,11 +36,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Pressure Test を「先に」設計する
 
-:::message
+:::note info
 **原則**: Pressure Test は最終評価のためのチェックリストではなく、エージェント設計に先んじて置く設計図として扱う。失敗モードの inventory を先に確定し、各失敗を防ぐ責務をどの層に置くかを設計段階で決める。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 実装してから「テストでも書くか」と eval を後追いで作る。この順序では eval が「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。
 :::
 
@@ -56,11 +56,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Surprise RFP で generalization を測る
 
-:::message
+:::note info
 **原則**: エージェントの品質は、開発用入力に対するスコアではなく、開発時には存在しなかった入力に対するスコアで測る。開発用と評価用を分離しない限り、overfitting は構造的に検出できない。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 開発用 RFP で 95% を達成して完成宣言する。開発時に観測した failure mode しか防御できていない可能性を切り分けられない。
 :::
 
@@ -68,11 +68,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### 3-layer responsibility model を実装版に落とす
 
-:::message
+:::note info
 **原則**: プロンプトとツールは「システムプロンプト = モチベーション付け / tool description = 文脈付け / tool 実装 = 安全網」の 3 層で責務を分割する。同じ責務を複数層に書くのではなく、各層に固有の責務を割り当てる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 全ての制約をシステムプロンプトに集約する、または tool description にロール宣言まで書き込む。書く場所を間違えると、モデルが tool 選択を決める瞬間に必要な情報が文脈にない、あるいは tool エラーから回復する経路が欠ける、という形で効かない。
 :::
 
@@ -93,11 +93,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Output contract を JSON で固定する
 
-:::message
+:::note info
 **原則**: エージェントの出力は固定された JSON contract で受ける。後段の処理（review、export、集計）はこの contract を前提に書く。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 自然言語の回答だけを返し、review・export 段階で再パースする。フィールドの欠落や形式ぶれが後段の処理を壊す。
 :::
 
@@ -112,11 +112,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Consistency reviewer を sub-agent として置く
 
-:::message
+:::note info
 **原則**: 横断整合性チェックは Draft エージェントとは別の sub-agent に分離し、各回答に対して pass/flag の判定と矛盾元 ID を返させる。検証義務を明示し、引用なしのフラグは禁止する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: Draft エージェントに「整合性も気をつけて」と指示する。複数責務を 1 エージェントに混載すると「全体的に整合性は問題ないと思われます」のような無内容な肯定が返る。
 :::
 
@@ -124,7 +124,7 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Eval は accuracy / sources / consistency / calibration / edge cases / latency / cost で多軸化する
 
-:::message
+:::note info
 **原則**: 単一スコアではエージェントの品質を測れない。最低でも以下 7 軸の assertion を eval suite に組み込む。
 :::
 
@@ -136,7 +136,7 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 - Latency: per-question / per-RFP の応答時間
 - Cost: per-RFP の API コスト
 
-:::message alert
+:::note alert
 **アンチパターン**: accuracy だけで採点する。confidence calibration が壊れたエージェント（low と言うべき場面で high を返す）を検出できない。
 :::
 
@@ -144,11 +144,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### 3-line rule で回帰を防ぐ
 
-:::message
+:::note info
 **原則**: Surprise RFP で失敗が観測されたら、修正はシステムプロンプト / tool description / tool 実装の各層に 1 行ずつ、合計 3 行までに抑える。それ以上の変更は別ブランチに切る。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: Surprise の段階でアーキテクチャを書き換える。開発用 RFP で動いていた挙動まで壊れ、改善ではなく回帰になる。
 :::
 
@@ -156,11 +156,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### エージェントには Sonnet を基本に置く
 
-:::message
+:::note info
 **原則**: マルチステージ・tool use を含むエージェントは Sonnet を基本選択肢とする。Opus は推論依存度が高い単一タスクで、Haiku は単純分類などレイテンシ要件が厳しい場面でのみ採用する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 全段に Opus を使う（コスト過剰）、または全段に Haiku を使う（マルチステージで失敗が連鎖する）。
 :::
 
@@ -168,11 +168,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### MVP と production agent の境界を意識する
 
-:::message
+:::note info
 **原則**: MVP は Parse + Retrieve + Draft の 3 段階で成立する。Review・compaction・memory といった生産投入向けの追加要素は、MVP が動作してから一段ずつ加える。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 最初から Review + memory + compaction を組み込み、どの段が壊れているか切り分けられなくなる。
 :::
 

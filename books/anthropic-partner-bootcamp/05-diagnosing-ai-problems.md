@@ -34,7 +34,7 @@ Meridian は B2B SaaS 企業とサポートキューの間に立つ仲介サー�
 
 つまり「動かない」の最初の原因候補に置くべきは、モデルの賢さではなく、**prompt の書き方・agent 同士の役割分担・tool の shape** である。これらは Opus に乗り換えても直らない種類のバグで、設計の側を直さない限り再発する。
 
-:::message alert
+:::note alert
 **アンチパターン**: 症状を見た瞬間にモデル変更（Sonnet → Opus）を提案する。プロンプトに例文を足して様子を見る。
 :::
 
@@ -56,7 +56,7 @@ Symptom → Hypothesis → Evidence → Recommendation の 4 ステップを、�
 - **Evidence**: 「prompt が変」は evidence ではない。「coordinator system prompt の L23 で `pick the one the customer seems most blocked by` と書いている」のように、ファイル名・行番号・該当文字列まで具体化する。
 - **Recommendation**: 「prompt を改善する」では不十分。「`coordinator-tools.json` の `spawn_specialist` schema の `category: string` を `categories: list[string]` に変える」のように、ファイル名・行番号・差分まで scoped にする。行番号を指せないなら Evidence に戻る。
 
-:::message alert
+:::note alert
 **アンチパターン**: Symptom を自分の言葉で要約し、Hypothesis を 1 つだけ立て、Evidence に「prompt がよくない」と書き、Recommendation を「プロンプトを改善する」で締める。
 :::
 
@@ -70,7 +70,7 @@ agentic system の診断を引き受けた最初の打ち合わせで、必ず�
 
 この 3 点が揃わないと、Diagnostic Loop の Evidence ステップが成立しない。
 
-:::message alert
+:::note alert
 **アンチパターン**: trace だけ見て「coordinator がツールを呼ばなかった」と結論する。tool description を見ずに「モデルの判断力不足」と書く。
 :::
 
@@ -87,7 +87,7 @@ agentic system の診断を引き受けた最初の打ち合わせで、必ず�
 5. **Context not reaching the model that needs it** — 必要な情報が、必要なモデルまで届いていない。
 6. **Cache placement breaking shared prompt regions** — cache pointer の置き場所が共有プロンプトを壊している。
 
-:::message alert
+:::note alert
 **アンチパターン**: 仮説リストを持たず、毎回ゼロから「何が悪いんだろう」と考える。結果、自分の bias（直近で踏んだバグの型）に毎回引きずられる。
 :::
 
@@ -95,7 +95,7 @@ agentic system の診断を引き受けた最初の打ち合わせで、必ず�
 
 coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、multi-category 問題で必ず破綻する。原因はツール schema 側にあることが多く、prompt をどう書き直しても直らない。
 
-:::message alert
+:::note alert
 **アンチパターン**: ツール側で `category: string` の単一 enum を受ける設計のまま、coordinator system prompt 側に「両方扱え」と書き足す。schema が許していないので、モデルは prompt に従えない。
 :::
 
@@ -105,7 +105,7 @@ coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、
 
 モデルがツールを選ぶときに参照するのは、ツール名と description である。実装由来の語彙（バージョン番号、データストア名）だけでツール名を決めると、モデルが「いつ呼ぶか」を推測できない。
 
-:::message alert
+:::note alert
 **アンチパターン**: `fetch_customer_v2_databricks` のように、内部実装の語彙でツール名を決める。description にも「rate limit を疑ったとき」「使用量異常を確認したいとき」のトリガー条件が書かれていない。
 :::
 
@@ -115,7 +115,7 @@ coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、
 
 sub-agent が「自分のスコープ外です」「解決しました」と coordinator に返すとき、それが本当にツールを呼んだ結果なのかは prompt の文面だけでは保証できない。構造で強制する必要がある。
 
-:::message alert
+:::note alert
 **アンチパターン**: sub-agent system prompt に「必要なら resolution tool を呼びましょう」と書いて済ます。
 :::
 
@@ -129,7 +129,7 @@ sub-agent が「自分のスコープ外です」「解決しました」と coo
 
 orchestrator と sub-agent を同一モデルで揃える必要はない。判断の重さに応じて階層化する。
 
-:::message alert
+:::note alert
 **アンチパターン**: 全 agent を同じモデル（例: 全部 Sonnet）で組む。コストか精度のどちらかに無自覚な負債が溜まる。
 :::
 

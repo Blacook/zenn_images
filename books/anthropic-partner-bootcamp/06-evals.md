@@ -29,11 +29,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### Eval は Input/Model/Output/Grader/Score の5要素に分解する
 
-:::message
+:::note info
 **原則**: eval の最小構成は `Input / Model / Output / Grader / Score` の 5 要素で語れる。最初の 3 つはこれまでの推論パイプラインそのものであり、eval が追加するのは「Output を Grader に渡して Score を返す」最後の 2 ステップだけである。この最小単位を維持することで、評価対象がモデルなのか、grader なのか、タスク設計なのかを切り分けやすくなる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「何を評価しているか」を明確にしないまま eval スクリプトを書き始めると、grader の責務とタスク設計が混ざり、結果の解釈が不能になる。runner に表示処理を埋め込んだり、grader が複数の独立した観点を 1 関数で採点したりすると、再利用も差し替えも難しくなる。
 :::
 
@@ -41,7 +41,7 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### 3 層 grader を組み合わせる
 
-:::message
+:::note info
 **原則**: grader は **Code → Model → Human** の順に検討する。判定基準が明確で決定的に書けるものは全部 code grader で済ませ、open-ended なものだけ LLM-as-Judge に持ち上げ、最終ゲートだけ human にする。実務上の比率の目安は **Code 80% / Model 15% / Human 5%**。
 :::
 
@@ -51,7 +51,7 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 | **Model grader (LLM-as-Judge)** | 別 LLM に基準を渡して採点                                      | トーン、完成度、指示遵守、open-ended 応答                         | 有料 / 数百ms | 中（モデル依存）     |
 | **Human grader**                | 人間レビュー                                                   | 安全性最終承認、ローンチ前ゲート、Judge 校正サンプル              | 高 / 遅い     | 高だがスケールしない |
 
-:::message alert
+:::note alert
 **アンチパターン**: 最初から LLM-as-Judge に全タスクを通すのは過剰投資である。exact match や `response_contains` で決着するタスクに Judge 呼び出しを乗せると、コストが線形に増え、grader 自身の非決定性で eval が flaky になる。逆に Human grader を「全件レビュー」と捉えるのも誤りで、Human はスケールしない。
 :::
 
@@ -59,11 +59,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### Judge モデルは「審判の専門性」で選ぶ
 
-:::message
+:::note info
 **原則**: LLM-as-Judge のモデル選定は「常に最強モデル」が正解ではない。**評価対象タスクの難易度**で決める。高頻度・反復・パターンマッチで足りる評価には Haiku、文脈推論や open-ended な解釈を要する評価には Sonnet / Opus を充てる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**:
 
 - 「念のため Opus にしておく」と全 Judge を最上位モデルにすると、Judge コストが本番推論より高くなる。
@@ -80,7 +80,7 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### 3-layer responsibility model: failure を fix location にマップする
 
-:::message
+:::note info
 **原則**: エージェントの失敗は「どこを直すか」で **モチベーション付け / 文脈付け / 安全網** の 3 層に振り分けられる。失敗パターンをこの層にマップすることで、修正先が決定される。
 :::
 
@@ -91,7 +91,7 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 | ツールエラーから回復しない | 安全網             | tool 実装（説明的な戻り値）                |
 | 知識不足                   | 文脈付け           | tool description（カタログ等の文脈情報）   |
 
-:::message alert
+:::note alert
 **アンチパターン**: system prompt にカタログを列挙する、tool description に役割宣言を書く、tool 実装で `KeyError` を投げるだけで終わる――いずれも層を取り違えた修正であり、エージェントが自己回復できない経路を残す。`empty list` や生の例外をそのまま返すと、エージェントは「ツールが落ちた」以上の情報を得られない。
 :::
 
@@ -99,11 +99,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### 構築と評価は別人格で書く
 
-:::message
+:::note info
 **原則**: build を書いた人格が同じく eval も書くと、無意識のうちに「自分が作ったものが通る方向」に grader が寄る。eval は build と切り離した責務として、最初から別の場所・別の人・別の時間で書く。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 同一エンジニアが build と eval を同タイミングで書くと、「直しやすい失敗」だけがテスト化され、ビジネスに致命的なケース（競合商品名を口にする、価格を約束する、off-topic）が漏れる。grader が build の言い訳を内包してしまう状態である。
 :::
 
@@ -115,11 +115,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 
 ### 非決定性は num_runs と分布で扱う
 
-:::message
+:::note info
 **原則**: LLM は temperature 0 でも非決定的に振る舞う。**平均値だけ**で品質を語らない。`num_runs=5` 程度で複数回走らせ、**pass@k**（最低 1 回通った率）と **pass^k**（毎回通った率）を分けて見て、分布（min/max/mean）を必ず観察する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「平均 90% だから OK」と判断したまま出荷する。同じ平均 90% でも全タスクが 90% 安定なのと、半数が 100% / 半数が 50% を行き来する flaky とでは、実運用での体感品質が完全に別物になる。
 :::
 
@@ -135,11 +135,11 @@ pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する
 
 ### Mission Control: Sonnet 主体 + Opus advisor
 
-:::message
+:::note info
 **原則**: エージェント階層は「常に Opus」ではなく **Sonnet 主体で走らせ、必要時のみ Opus を呼ぶ** 構成（**Mission Control / Inverted agent hierarchy**）が、コストと精度の両面で優位になりやすい。Opus への escalation 率は 5〜10% に抑えるのが目安。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 主体エージェントを Opus に固定すると、トークン単価が 1 桁上がり、レイテンシも悪化する。逆にすべて Haiku で回すと、nuanced な分岐で精度が落ちる。
 :::
 
@@ -147,11 +147,11 @@ pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する
 
 ### PM / PRD と評価を結合する
 
-:::message
+:::note info
 **原則**: eval は PRD のテストである。Acceptance Criteria を grader 定義に落とし、PM とドメインエキスパートが「合格条件」を共同所有する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: エンジニアが単独で eval を書くと、ビジネス致命的なケース（競合品名、価格約束、トーン崩壊）が漏れる。逆に PM 側が「網羅的」と感じている自然言語 Acceptance Criteria を grader に落とさないままだと、出荷判断が vibes に戻る。
 :::
 

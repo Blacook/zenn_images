@@ -31,11 +31,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 ### Agentic loop は `stop_reason` を軸に組む
 
-:::message
+:::note info
 **原則**: エージェントの本体は「`response.stop_reason == "tool_use"` のあいだ回す while ループ」である。各イテレーションで `tool_use` ブロックを実装にディスパッチし、結果を `tool_result` で次ターンへ積む。`stop_reason` の取りうる値は 3 つで、`"tool_use"` ならループ継続、`"end_turn"` で終了、`"max_tokens"` は実質エラーとして扱う。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: ループ脱出条件をターン数や時間に置く実装。Claude は途中で「もう一段ツールを呼びたい」と判断する場合があり、`stop_reason` 以外で打ち切ると tool call が宙に浮き、次ターンに整合性エラーを返す。
 :::
 
@@ -43,11 +43,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 ### 思考モードと effort は粒度を分ける
 
-:::message
+:::note info
 **原則**: `thinking` パラメタは「思考をどう生成するか」、`output_config.effort` は「どこまで深く考えるか」を制御する。`thinking` の値は `"adaptive"`（複雑さに応じて自動）／`"enabled"`（常に生成）／`"none"`（無効）の 3 種。`effort` は `"low"` / `"medium"` / `"high"` / `"xhigh"` / `"max"` の 5 段階で、**API デフォルトは `"high"`**（パラメータ省略時と同じ挙動）。`xhigh` は Claude Opus 4.7 専用の拡張レベルで、長時間のエージェント・コーディングタスク向けに Anthropic は **Opus 4.7 のコーディング／エージェント用途は `xhigh` から始めることを推奨**している。`max` は Mythos Preview / Opus 4.7 / Opus 4.6 / Sonnet 4.6 で利用可能な絶対最大の能力。adaptive + effort の組み合わせで「複雑なら深く、簡単なら浅く、上限はこちらで握る」が成立する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 本番系で常に `effort="max"` や `xhigh` を貼る。レスポンス時間とトークン課金が数倍〜十数倍に膨らみ、500 件/日のスケールで経済合理性が崩壊する。逆に、曖昧チケットを `low` に固定すると、必要な仮説立てが行われずミスエスカレーションが増える。`high` をデフォルトと知らずに「念のため `xhigh`」を貼るのも、Sonnet 系では無効な値で実行時エラーになる罠がある（`xhigh` は Opus 4.7 限定）。
 :::
 
@@ -55,11 +55,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 ### `format` (JSON schema) は最終 call でのみ使う
 
-:::message
+:::note info
 **原則**: `output_config.format` を渡すと、Claude の **すべてのテキスト出力が JSON Schema に制約される**。これが効くのはツールループが完了したあとの最終呼び出しに限られる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: ループ中の API コールに `format` を入れる。`tool_use` を返したいタイミングで「テキストは JSON でなければならない」と引っ張られ、ツール呼び出しが壊れる。スキーマで `additionalProperties` を省略するのも罠で、Claude が定義外のフィールドを生やして下流のパースが死ぬ。
 :::
 
@@ -67,11 +67,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 ### Tool description は呼ばれ方を決める
 
-:::message
+:::note info
 **原則**: `tool` スキーマの `description` は Claude にとっての API ドキュメントで、`name` と `input_schema` 以上に「いつ呼ぶか／呼ばないか」を左右する。`input_schema` の各プロパティ `description` まで具体例を書くと、入力の質も上がる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「Search the knowledge base.」のような事務的な 1 行で済ませる。Claude は「順序」「前提」「不可ケース」を読み取れず、`get_ticket` を飛ばして `search_kb` をいきなり呼ぶ、解決前に `resolve_ticket` を打つ、といった経路を取りはじめる。
 :::
 
@@ -79,11 +79,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 ### Content block を取りこぼさない
 
-:::message
+:::note info
 **原則**: `response.content` は `ThinkingBlock` / `ToolUseBlock` / `TextBlock` の混在リストで返る。assistant ターンを次ターンへ積み戻すときは **`response.content` をそのまま** 渡す。extended thinking はサーバ側で連続性を検証しているため、`ThinkingBlock` を落とすと整合性エラーになる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: `text` だけ・`tool_use` だけを抽出して `messages` に積む。adaptive thinking 有効時には必ず壊れる。また、最終の構造化 JSON を取り出すときに `content[0]` を見る実装も罠で、`[ThinkingBlock, TextBlock]` の並びだと JSON は **末尾の TextBlock** に入る。
 :::
 
@@ -106,11 +106,11 @@ data = json.loads(text_blocks[-1].text)
 
 ### Streaming は UX 改善メトリクスである
 
-:::message
+:::note info
 **原則**: `client.messages.stream()` はコンテキストマネージャで、`content_block_start` / `content_block_delta` / `content_block_stop` の 3 種イベントが順番に流れる。`content_block_delta` の `delta.type` は `thinking_delta`（思考トークン）／`text_delta`（応答トークン）／`input_json_delta`（ツール引数 JSON の断片）の 3 種で、これらを別々にハンドリングすると思考・応答・ツール引数が独立した流れとして可視化できる。ストリーム終了後は `stream.get_final_message()` で完全な `Message` オブジェクトを取得する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: ストリーミングをトークン節約や速度短縮の手段だと誤解すること。実体は UX 上の体感改善 ── 「2 段落待たせる」のではなく「1 文ずつ流れる」 ── であって、レイテンシ自体は短くならない。また、ストリーム中に `block.input` を読もうとしても、ツール引数 JSON は `get_final_message()` 呼び出し後に確定するため、ストリーム終了前のアクセスは不完全な値を返す。
 :::
 
@@ -118,11 +118,11 @@ data = json.loads(text_blocks[-1].text)
 
 ### クライアント側の地味な落とし穴
 
-:::message
+:::note info
 **原則**: 「Messages API はサーバ側に状態を持ち、SDK は薄い HTTP クライアントである」と考えて構成パラメタを揃える。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**:
 
 - `timeout` を省略する。`max_tokens > 21333` で非ストリーミング呼び出しをすると、SDK デフォルトのタイムアウトに先に当たって落ちる。

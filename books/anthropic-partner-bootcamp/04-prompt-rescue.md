@@ -37,11 +37,11 @@ free: true
 
 ### 判断基準は内容で書く、tone で書かない
 
-:::message
+:::note info
 **原則**: 優先度のような分類判定は、ユーザ入力のトーンではなく、業務影響の内容に基づいて行う。プロンプトには判定基準を文章ではなく「条件」として書き下す。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「優先度を判定して」「緊急なら P1」のような短い指示は、モデルが "URGENT" "CRITICAL" "UNACCEPTABLE" などの語彙に強く反応し、機能要望を P1 に誤分類する。
 :::
 
@@ -49,11 +49,11 @@ free: true
 
 ### Bad/Good ペアは否定形より強い
 
-:::message
+:::note info
 **原則**: アンチパターンを伝えるときは、否定形 (「〜しないでください」) ではなく、`<bad>` / `<good>` / `<reason>` の三点セットで対比を示す。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「製品名を捏造しないでください」のような単純な否定形は、モデルが見落としやすい。否定だけでは「何を代わりにすべきか」のアンカーが残らないため、捏造系の失敗が再発する。
 :::
 
@@ -61,11 +61,11 @@ free: true
 
 ### Hallucination は null エスケープで防ぐ
 
-:::message
+:::note info
 **原則**: 「情報がない場合の振る舞い」をプロンプトで明示する。明示的な「逃げ道」がない限り、モデルはフィールドを埋めようとして捏造する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「エンティティを抽出する」とだけ書く。あるいは「Always include all JSON fields even if empty」のような曖昧な指示を与える。これだとモデルは「include」を「fill in」と解釈し、`null` ではなくそれらしい値を生成する。
 :::
 
@@ -73,11 +73,11 @@ free: true
 
 ### JSON 出力は schema で縛る
 
-:::message
+:::note info
 **原則**: 出力フォーマットは「JSON で返して」と書くのではなく、JSON schema を `response_format` / `output_config` で指定し、`additionalProperties: false` でフィールドの追加・欠落を禁止する。許可される値は enum で列挙する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: フリーテキストで「JSON で返して」「全フィールド含めて」と指示するだけ。`null` と空配列と空文字列の使い分けが曖昧になり、後段のパース処理が落ちる。
 :::
 
@@ -85,11 +85,11 @@ free: true
 
 ### 構造化マークアップ (XML/Markdown) は注意配置の手段
 
-:::message
+:::note info
 **原則**: Claude は XML タグを「指示の境界」として認識しやすい。`<task>` / `<priority_rules>` / `<input>` / `<final_reminder>` のように役割ごとにタグで囲むと、ルールと入力データが混ざらない。さらに、最重要ルールはプロンプト末尾にも再掲する (sandwich pattern)。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 全文をベタテキストで書き、ルールと入力を改行で区切るだけ。冒頭の指示は読まれるが、入力が長くなると中盤の指示が薄まり、末尾の指示は再掲されないため抜ける。
 :::
 
@@ -97,11 +97,11 @@ free: true
 
 ### Eval 観点は顧客の failure mode と入力形状から導く
 
-:::message
+:::note info
 **原則**: Eval の **採点軸** は「顧客が壊れていると言った失敗モード」を 1 対 1 で写像する。**入力カテゴリ** は「本番想定の入力形状の分布」を網羅する。両者を直交させたマトリクスで、**どの input shape で どの failure mode が起きるか** が一望できる。さらに、判定不能ケースのために **success tier (合格・上位・最上位の 3 段) を先に決め**、決定論的に採点できない軸だけ LLM-as-judge に回す (audited フラグ)。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: BLEU / accuracy / latency といった汎用メトリクスだけを取って、業務固有の failure mode を捕まえそびれる。あるいは "clean" ケースばかりで eval を組み、本番で壊れる入力形状 (vague / non-native / multi-issue) を eval から落とす。「とりあえずスコアが上がっている」を続け、合格ラインを決めないまま反復してしまうのも罠。
 :::
 
@@ -111,11 +111,11 @@ diagnosis を先に走らせるのも観点設計の一部だ。ノートブッ�
 
 ### Eval-driven iteration で進める
 
-:::message
+:::note info
 **原則**: プロンプトを書く前に Eval ハーネスを用意する。ベースライン測定 → 失敗カテゴリ分析 → 仮説立案 → 修正 → 再測定 → 差分検証、というループで進める。カテゴリ別スコアを見て、最も弱いカテゴリを 1 つずつ潰す。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 1 回で完璧を目指して全体を書き換える。あるいは、最後の 1 ケースに固執して既に通っているケースを壊す。
 :::
 
@@ -253,11 +253,11 @@ Reply with exactly one line: PASS or FAIL followed by a one-sentence reason.
 
 ### Prompt chaining はデバッグと費用最適化を兼ねる
 
-:::message
+:::note info
 **原則**: 1 プロンプトで複数のタスクを処理するのではなく、`priority` 分類 → `entities` 抽出 → `response` 生成、のように分割する。各ステップが短くなり、Few-shot も対象を絞れて精度が上がる。ステップごとに `haiku` と `sonnet` を使い分ける余地も生まれる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 優先度判定・エンティティ抽出・応答生成を 1 プロンプトに詰め込む。応答生成タスクが共感的なトーンを誘発し、優先度判定が引きずられて高くなる、というタスク間干渉が起きる。
 :::
 
@@ -328,11 +328,11 @@ final_json = run_chain(
 
 ### 「賢く振る舞え」は効かない
 
-:::message
+:::note info
 **原則**: 「あなたは優秀なサポートエンジニアです」のようなロール定義は、それ単体では効果が薄い。「冷静で、感情に左右されず、内容で判断する」のように、ロールに「どう振る舞うか」の具体的な制約を紐付ける。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: 「You are a smart assistant」「Be careful」のような抽象的な指示。モデルは「smart」「careful」が何を意味するかをタスクに紐付けて解釈できない。
 :::
 
@@ -340,11 +340,11 @@ final_json = run_chain(
 
 ### Prompt injection 防御は構造で行う
 
-:::message
+:::note info
 **原則**: ユーザ入力は必ず `<user_input>` などのタグで囲み、システム指示と物理的に分離する。タグ内のテキストは「データ」であり「指示」ではない、という規約をシステム指示に明記する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**: ユーザ入力をシステム指示と同じ文脈に直接埋め込む。`f"Classify this ticket: {ticket}"` のような文字列結合は、ticket 内に "Ignore previous instructions" のような文字列が混ざると素通りする可能性がある。
 :::
 

@@ -48,11 +48,11 @@ free: true
 
 ### Context は有限資源として設計する
 
-:::message
+:::note info
 **原則**。Context は容量ではなく資源である。1M token 入るという物理上限は「精度が出る上限」を意味しない。何を残し、何を捨て、何を要約し、何を外部に逃がすか — エージェントループのターンごとに決める設計対象である。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。「念のため全部入れる」。retrieval も pre-filter も summarization も挟まず、生のドキュメントと履歴を丸ごと毎ターン同梱する設計。短期的には楽だが、context rot の影響を最も強く受ける。
 :::
 
@@ -60,11 +60,11 @@ free: true
 
 ### Context rot は curve であって閾値ではない
 
-:::message
+:::note info
 **原則**。入力長が伸びるほど、忠実性 (faithfulness) と検索性能 (retrieval) は連続的に劣化する。「N トークンまでは安全、それ以降は危険」という閾値ではなく、長くなるほど少しずつ崩れていくカーブとして理解する。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。「context window 上限まではフルに使ってよい」と前提を置くこと。劣化は容量を使い切る手前から始まる。
 :::
 
@@ -72,11 +72,11 @@ free: true
 
 ### "Lost in the middle" は位置で殴る
 
-:::message
+:::note info
 **原則**。同じ情報でも、document の冒頭・末尾に置くか、中盤に置くかで取り出し精度が変わる。最弱は **25–50% depth** の中盤帯。重要情報は冒頭か末尾に置く。指示は質問の直前にも再掲する（sandwich pattern）。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。長文の中盤に重要情報を埋めて、モデルが拾ってくれることを期待する設計。Chroma の grid を見れば、中盤が一番暗い帯になることが先に分かっている。
 :::
 
@@ -84,11 +84,11 @@ free: true
 
 ### Prompt と Context Engineering は別スキル
 
-:::message
+:::note info
 **原則**。前者は単発ターンの言葉遣い（XML、CoT、role 設定、few-shot 等）の最適化、後者はエージェントループの中で「何を残し / 落とし / 要約し / 外に逃がすか」を多ターンにわたって設計する技術。問題領域も使う道具も別物である。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。「prompt を長く詳しく書く」ことを context engineering と呼ぶ。長い prompt は単に長い prompt であり、context rot を悪化させる側に効く。
 :::
 
@@ -96,7 +96,7 @@ free: true
 
 ### 3 primitives は問題に応じて選ぶ
 
-:::message
+:::note info
 **原則**。Anthropic が示すエージェント向け context 管理プリミティブは 3 つ。何が context を圧迫しているかによって選ぶ。
 :::
 
@@ -106,7 +106,7 @@ free: true
 | 履歴自体が長い               | Compaction            | 履歴を要約に置き換える                     |
 | セッションを跨いで保持したい | Memory tool           | 外部ストアに退避し、必要時に取り出す       |
 
-:::message alert
+:::note alert
 **アンチパターン**。原因を見ずに「とりあえず compaction を入れる」「とりあえず memory tool を入れる」。tool 出力が暴れているのに compaction を入れても、要約結果がさらに暴れる。
 :::
 
@@ -114,7 +114,7 @@ free: true
 
 ### Tool Result Clearing の設定項目
 
-:::message
+:::note info
 **原則**。Tool Result Clearing は次の 5 つの設定で挙動を制御する。
 :::
 
@@ -124,7 +124,7 @@ free: true
 - `exclude_tools` — 保護したいツール名のリスト（memory 等）
 - `clear_tool_inputs` — 入力側も落とすかどうか
 
-:::message alert
+:::note alert
 **アンチパターン**。`exclude_tools` を指定せずに memory tool 等の「落としてはいけないツール出力」まで巻き込んで削除する。落とすべきは raw な検索結果や fetch 結果であって、永続化責務を持つツールの返り値ではない。
 :::
 
@@ -144,11 +144,11 @@ context_management = {
 
 ### Memory tool は外部ストレージ責務
 
-:::message
+:::note info
 **原則**。Memory tool はファイルバックの外部ストアに対する CRUD インターフェースであり、モデル自身が「何を保存するか / 更新するか / 消すか」をループ中に決める。API は `view` / `create` / `str_replace` / `insert` / `delete`。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。会話履歴を全部 memory に書き込む。memory はあくまで「セッションを跨いで残す必要があるもの」用であり、短期記憶の代替ではない。短期記憶は compaction が担う。
 :::
 
@@ -156,11 +156,11 @@ context_management = {
 
 ### XML タグは注意機構として使う
 
-:::message
+:::note info
 **原則**。`<key_information>` `<document_content>` `<question>` のような XML タグで境界をモデルに明示すると、retrieval スコアが改善するケースがある。中身を変えていなくても、attention が乗りやすくなる。Anthropic の訓練データと RLHF が XML 構造化に整合しているためと考えられる。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。全段落に `<important>` を付ける。「全部重要」は「どれも重要ではない」と意味的に等価で、注意機構を狂わせる方向に効く。
 :::
 
@@ -168,11 +168,11 @@ context_management = {
 
 ### 「全部突っ込む」は怠惰、focused が勝つ
 
-:::message
+:::note info
 **原則**。Distractor（意味的に似ているが無関係な情報）は short context でも害があり、long context では破壊的に効く。top-k を増やすより減らす。focused 設計のほうが、速さ・コスト・精度のすべてで勝つ。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。「retrieval の取りこぼしを防ぐため」と top-k を機械的に増やす。distractor の混入確率が上がり、retrieval は逆に劣化する。
 :::
 
@@ -180,11 +180,11 @@ context_management = {
 
 ### 本番形状で eval する
 
-:::message
+:::note info
 **原則**。標準ベンチマークでの 95% は、自社の context shape での 95% を保証しない。入力長分布・needle depth・distractor 構成を、本番に近い形で揃えた eval セットを用意し、context engineering の変更ごとに回す。
 :::
 
-:::message alert
+:::note alert
 **アンチパターン**。staging 環境で短い文書だけで eval し、本番の長文 + 履歴 + tool 出力混在の状態で初めて性能を測る。本章冒頭の staging 95% / production 67% は、まさにこれが原因の典型。
 :::
 
