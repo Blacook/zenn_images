@@ -31,7 +31,7 @@ Day2（Scaling with Rigor）の4セッション。
 
 Day1 で「とにかく動くものを作れる」感覚を全員に持たせてから、Day2 で「その動くものをどう測り、どう運用に乗せるか」へ視点を引き上げる。
 
-## 2日間の底流にあった核メッセージ
+## 2日間の核メッセージ
 
 セッションが切り替わるたびに、講師たちは少しずつ言い回しを変えながら同じことを繰り返していた。後から振り返ると、講義の核は以下の一文に集約できる。
 
@@ -99,5 +99,5 @@ Bootcamp のカリキュラムは丁寧に設計されているが、それで�
 | 06  | [Building an Eval — 評価ハーネスの設計](06-building-an-eval)                  |
 | 07  | [Inference Optimization と Prompt Caching](07-inference-optimization)         |
 | 08  | [Context Engineering — コンテキストは有限資源](08-context-engineering)        |
-| 09  | [Agent Build Hackathon と総括](09-agent-hackathon)                            |
+| 09  | [Agent Build Hackathon](09-agent-hackathon)                            |
 | 10  | [総括](10-conclusion)                               |
