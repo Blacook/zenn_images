@@ -4,7 +4,7 @@ summary: |
   Messages API によるエージェント構築・プロンプトエンジニアリング・Eval 駆動開発・
   推論最適化・コンテキスト工学を、現場で効くベストプラクティスとアンチパターンに
   整理した連載です。
-topics: ["claude", "anthropic", "ai", "agent", "llm"]
+topics: ["claude", "anthropic", "agent", "partner-bootcamp", "accenture"]
 published: false
 price: 0
 chapters:
