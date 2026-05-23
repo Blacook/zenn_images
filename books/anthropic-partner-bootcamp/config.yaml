@@ -1,0 +1,19 @@
+title: "Anthropic Partner Bootcamp 体験記 — Applied AI 実務者のための2日間"
+summary: |
+  Anthropic 主催の Partner Bootcamp（2日間）で学んだ、Claude Code の実践活用・
+  Messages API によるエージェント構築・プロンプトエンジニアリング・Eval 駆動開発・
+  推論最適化・コンテキスト工学を、現場で効くベストプラクティスとアンチパターンに
+  整理した連載です。
+topics: ["claude", "anthropic", "ai", "agent", "llm"]
+published: false
+price: 0
+chapters:
+  - 01-overview
+  - 02-claude-code-inventory
+  - 03-developer-platform
+  - 04-prompt-rescue
+  - 05-diagnosing-ai-problems
+  - 06-evals
+  - 07-inference-optimization
+  - 08-context-engineering
+  - 09-agent-build-hackathon
