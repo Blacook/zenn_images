@@ -177,28 +177,8 @@ Surprise RFP では「3 行ルール」も役立った。失敗を見たら、�
 - [Tool use (function calling) — Anthropic Docs](https://docs.anthropic.com/en/docs/build-with-claude/tool-use): tool description のベストプラクティスと tool use loop の正しい実装。
 - [Prompt caching — Anthropic Docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching): RFP のように system prompt と tool definition が全問共通になる設計では、最も効果が出る技術。
 
-## 2 日間で受け取ったもの — 連載のクロージング
+## 次章へ
 
-最終課題が終わったあと、Bootcamp の核メッセージがもう一度スクリーンに出された。
+ハッカソンを最後の演習として、2 日間で渡された道具と語彙はここで出揃った。連載全体を一枚絵で振り返り、教室を出たあと何を続けていくかを、次章でまとめる。
 
-> **Most AI system failures aren't model problems, but prompt, agent architecture, and tool design problems.**
-
-このメッセージが 2 日間ずっと地下水脈のように通っていたのだ、ということが、9 章ぶんを書き終えたいまになってようやく腹落ちする。新しいモデルが出るたびに能力は伸びるが、本番でエージェントが壊れる原因の大半は「モデルが弱いから」ではない。**プロンプトが役割と使用義務を明示していない / tool description が許可値や挙動を伝えていない / tool 実装がエラー時に文脈を返さない / eval が仕様を表現していない / context に distractor が混じっている** — の組み合わせだ。これは観察された経験則というより、エンジニアリング上の事実として扱える指針として教えられた。
-
-連載の冒頭、第 1 章で立てた 3 つの takeaways がどこで具体化されたかを最後にもう一度なぞっておきたい。**takeaway #1（マルチエージェントの評価は未解決）** は第 6 章で eval を PM と回す具体的なフローとして展開し、grader の階層と非決定性ハンドリングまで降りた。**takeaway #2（Context Engineering が独立した規律になった）** は第 8 章で context rot、tool result clearing、compaction、memory tool として運用論まで踏み込んだ。そして **takeaway #3（この時代の IT の役割は、根本的に変わりつつある）** が、本章で着地した。
-
-その意味するところを、最後に書いておく。本章の RFP エージェントは Messages API を直接叩く tool use loop で、その挙動を eval で定義し、context を curate し、inference のレイヤーを使い分け、prompt caching でコストとレイテンシを抑え、3 層責務モデルで設計判断を切り分けて、Pressure Test で初見入力に対する堅牢性を担保した。第 2 章の Claude Code、第 3 章の Messages API、第 4 章のプロンプトエンジニアリング、第 5・6 章の Eval、第 7 章の Inference Optimization、第 8 章の Context Engineering — それぞれ独立して学んだ要素が、ここで初めて 1 つの工程として並んだ。エージェントエンジニアリングという仕事は、モデルの進化を待つ仕事ではなく、これら工学的レイヤーを **今日からチューニングできる規律** の集合体として扱う仕事になった。IT の役割が「システムを組み立てて運用する」から「エージェントの挙動を eval で定義し、3 層に分けて defense を組み、未知入力に対する堅牢性を設計判断として切る」に置き換わっている、というのが第 1 章で立てた仮説の答えだった。
-
-教室で交わした会話の価値も、最後に改めて書いておきたい。スライドやノートブックそのものより、休憩中の雑談で「ここのモック、本物に置き換えるならどうする？」と問われた瞬間や、隣の席のエンジニアが Review エージェントの verification 義務をどう書いたかを見せてくれた瞬間に、自分の設計の弱点が露わになった。カリキュラム本体と同じくらい、その場の対話で受け取ったものが大きかった。
-
-## 読者へのアクション提案
-
-連載をここまで読んでくれた方に、次のスプリントから始められる具体的なアクションを 3 つ提示して終わりたい。
-
-1. **自分が今関わっているエージェントに、Pressure Test 5 パターンのうち最も弱そうな 1 つを当ててみてください**。Hallucination trap か False-premise が手薄なケースが多いはずです。1 ケースぶんの入力を書いてエージェントに通すだけで、defense の穴が露わになります。
-2. **system prompt / tool description / tool 実装が、3 層責務モデルに照らしてどの層が薄いかを棚卸ししてください**。落ちている層に 1 行ずつ埋めるだけで、エージェントの振る舞いは別物になります。
-3. **Claude に「この eval harness を作って」と問いかける一文から始めてください**。assertion は 5 つで十分です。PRD 段階で PM・SE と一緒に書き、エージェントの責務範囲を eval として固定する — この運用に切り替えたチームは、その後のループ速度が桁で変わります。
-
----
-
-本連載はこの章で終わりです。最初の章に戻る場合: [01-overview](01-overview)
+→ [第10章 総括 — 2日間を一枚絵で振り返る](./10-conclusion)

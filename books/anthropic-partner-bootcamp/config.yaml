@@ -17,4 +17,5 @@ chapters:
   # - 07-inference-optimization
   # - 08-context-engineering
   # - 09-agent-build-hackathon
-toc_depth: 2 # 
+  - 10-conclusion
+toc_depth: 2 #
