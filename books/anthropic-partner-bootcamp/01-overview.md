@@ -99,5 +99,5 @@ Bootcamp のカリキュラムは丁寧に設計されているが、それで�
 | 06  | [Building an Eval — 評価ハーネスの設計](06-building-an-eval)                  |
 | 07  | [Inference Optimization と Prompt Caching](07-inference-optimization)         |
 | 08  | [Context Engineering — コンテキストは有限資源](08-context-engineering)        |
-| 09  | [Agent Build Hackathon](09-agent-hackathon)                            |
-| 10  | [総括](10-conclusion)                               |
+| 09  | [Agent Build Hackathon](09-agent-hackathon)                                   |
+| 10  | [総括](10-conclusion)                                                         |
