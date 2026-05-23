@@ -6,7 +6,7 @@ free: true
 > ハンズオン公式リポジトリ: https://github.com/victorsteeb/Basecamp-Exercises.git
 > 該当ディレクトリ: `day1/04_diagnosing-ai-problems/`
 
-## メールを読み終えた瞬間に立てた仮説は、ほぼ全部外れていた
+## はじめに — メールを読み終えた瞬間に立てた仮説は、ほぼ全部外れていた
 
 クライアント Priya からのメールには、こう書いてあった。チケット T-4471 で SSO の障害と billing の過剰請求の 2 件を同時に投げたのに、AI サポートシステムは SSO の話しか返してこなかった。billing については「account manager に連絡してください」と書いてあった、と。
 
@@ -22,7 +22,7 @@ free: true
 
 割り切りが大胆だと感じた。実装も評価も書かない。「読む」だけのトレーニング。けれど終わってみると、これがいちばん現場に近い演習だった気がしている。クライアント案件で AI システムを引き継ぐとき、最初の数日はモデルを動かせず、手元には system prompt と tool schema と数本の trace しかない、という状況がふつうにある。「読める」ことが武器になる場面は、想像より多い。
 
-## Diagnostic Loop の 4 ステップを、エッセイとして書き直す
+## 何を学んだか — Diagnostic Loop の 4 ステップ
 
 ここで導入されたのが **Diagnostic Loop** という 4 ステップの型だった。Symptom → Hypothesis → Evidence → Recommendation。並べてしまえば普通だが、運用してみると一つひとつに罠があった。
 
@@ -34,7 +34,7 @@ free: true
 
 **Recommendation** は「どのファイルの、どの行を、どう変えるか」まで落とす。`coordinator-tools.json` の `spawn_specialist` の input schema を `category: string` から `categories: list[string]` に変える、coordinator system prompt の L23 を削除して「該当カテゴリすべてに spawn せよ」と書き換える、というレベルまで。行番号を指せないなら Evidence に戻る、という単純なルールが、診断品質を決定的に持ち上げた。
 
-## 「動かないのはモデルが弱いから」という反射が崩れた瞬間
+## 前提が崩れた瞬間 — 「動かないのはモデルが弱いから」という反射
 
 セッションの結論メッセージはこう書かれていた。
 
@@ -46,7 +46,7 @@ free: true
 
 似たことが、account sub-agent の trace でも起きていた。`check_audit_log` で plan_change イベントを正しく取得しておきながら、resolution tool を一つも呼ばずに「自分のスコープ外です」と coordinator に返していた。over-claiming with under-acting と呼ばれるアンチパターンだ。これも、より賢いモデルに変えても直らない。「sub-agent の返り値に `next_actions` のような handoff フィールドを構造的に持たせる」「resolution フェーズで `tool_choice={"type": "any"}` を使って最低 1 ツール呼び出しを構造で強制する」という、設計の側の手当てが必要になる。
 
-## 押さえておきたい artifacts の引用
+## 押さえておきたいコード／設定 — artifacts の引用
 
 T-4471 の coordinator trace の決定的な部分を引用しておく。これだけで複数の故障モードが裏付けられる。
 
@@ -134,7 +134,7 @@ Diagnostic Loop の 4 ステップは、表として手元に置いておくと�
 - Anthropic Docs: Tool use overview（tool description の書き方） — https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
 - Anthropic Docs: Prompt caching（cache placement の落とし穴） — https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
 
-## 章末 reflection — 「読める人」が現場では強い
+## 章末 — 「読める人」が現場では強い
 
 第1章で書いた takeaway #1 ——「AI Engineering の中心は、モデルではなく、その周辺の設計にある」——が、この章でようやく一つの具体例として閉じた気がしている。T-4471 のチケットは、モデルが正しく分類していたのに、ツールの shape が答えを許していなかったから壊れていた。直す場所は prompt の文言と tool schema の数行で、モデルを差し替える必要はなかった。
 

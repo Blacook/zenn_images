@@ -11,7 +11,7 @@ free: true
 
 ---
 
-## 自分の前提が崩れた 2 日目の午後
+## はじめに — 2 日目の午後、長い入力に強いという思い込みが折れた
 
 SF の 2 日目、Context Engineering のセッションが始まったとき、自分はわりと余裕で椅子に座っていた。Prompt の書き方ならそこそこ自信があったし、1M token の context window を持つモデルも触ったことがある。「長い入力に強くなったんでしょ、知ってる」くらいの心持ちだった。
 
@@ -107,7 +107,7 @@ trigger threshold（何% で発火するか）と custom summary instructions（
 
 ---
 
-## 前提が崩れた瞬間、3 つ
+## 前提が崩れた瞬間
 
 このセッションで、自分の中で静かに崩れていった前提が 3 つある。
 
@@ -164,7 +164,7 @@ treatment_prompt = create_niah_prompt(treatment_haystack, QUESTION)
 
 ---
 
-## 現場に持ち帰りたい 7 か条
+## 現場に持ち帰りたいこと
 
 セッションを抜けて、メモ帳に書き残したのはこの 7 つだった。
 
@@ -193,7 +193,7 @@ treatment_prompt = create_niah_prompt(treatment_haystack, QUESTION)
 
 ---
 
-## クライマックスとしての回収
+## 章末 — クライマックスとしての回収
 
 第1章で著者が掲げた takeaway #2 はこうだった。**「Context Engineering は nice-to-have ではなく、これが規律だ」**。最初に読んだときは、正直、標語くらいに受け取っていた。
 
