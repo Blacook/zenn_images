@@ -75,13 +75,153 @@ free: true
 
 **具体例**: プロンプト構造は「システム指示 → ルール → 例 → 入力 (`<user_input>` で囲む) → 重要指示の再掲 (`<final_reminder>`)」の順で並べる。`<final_reminder>` に「all extracted fields explicitly present?」「unknown fields set to null?」「JSON matches schema exactly?」のような自己チェック項目を 3〜5 個並べると、出力直前にルールが再活性化される。
 
+### Eval 観点は顧客の failure mode と入力形状から導く
+
+**原則**: Eval の **採点軸** は「顧客が壊れていると言った失敗モード」を 1 対 1 で写像する。**入力カテゴリ** は「本番想定の入力形状の分布」を網羅する。両者を直交させたマトリクスで、**どの input shape で どの failure mode が起きるか** が一望できる。さらに、判定不能ケースのために **success tier (合格・上位・最上位の 3 段) を先に決め**、決定論的に採点できない軸だけ LLM-as-judge に回す (audited フラグ)。
+
+**アンチパターン**: BLEU / accuracy / latency といった汎用メトリクスだけを取って、業務固有の failure mode を捕まえそびれる。あるいは "clean" ケースばかりで eval を組み、本番で壊れる入力形状 (vague / non-native / multi-issue) を eval から落とす。「とりあえずスコアが上がっている」を続け、合格ラインを決めないまま反復してしまうのも罠。
+
+**具体例**: TechSupport Corp の Customer Brief は failure mode を **4 つ** 明示している ── "JSON comes back broken" / "priorities are wrong" / "drafted responses sometimes contradict the classification" / (entities が hallucinate されることは "fails badly" の中身として diagnosis セクションで補足)。これが `score_case` の 4 軸 `json_valid` / `priority_correct` / `entities_accurate` / `response_coherent` にそのまま対応する。入力カテゴリの 6 分類 (clean / multi-issue / vague / non-native / feature-request / complex) も Brief の「production tickets are messy — multiple issues, vague descriptions, non-native English speakers」表現を分解したものだ。Success tier も Brief の制約から導かれており、**Baseline 75% / Optimizer 90% / Architect = self-healing chain** の 3 段。さらに、response coherence だけは判定不能なので "audited" フラグを立てたケースだけ `judge_response` で LLM-as-judge に回し、それ以外は auto-pass で済ませる ── judge コストと採点ノイズを同時に最小化する設計になっている。
+
+diagnosis を先に走らせるのも観点設計の一部だ。ノートブック cell 8 / cell 10 では、**失敗例 5 件を Claude に投げて "What structural patterns do you see?" と聞く meta-prompting** が最初の手順として推奨されている。Claude の挙げた "task interference" / "hallucinated entities" / "tone biasing priority" / "feature-request misclassified" が、そのまま採点軸とカテゴリの妥当性チェックとして機能する ── 「Brief の failure mode と diagnosis の patterns が一致していれば、その eval は顧客の課題を捉えている」と言える。
+
 ### Eval-driven iteration で進める
 
 **原則**: プロンプトを書く前に Eval ハーネスを用意する。ベースライン測定 → 失敗カテゴリ分析 → 仮説立案 → 修正 → 再測定 → 差分検証、というループで進める。カテゴリ別スコアを見て、最も弱いカテゴリを 1 つずつ潰す。
 
 **アンチパターン**: 1 回で完璧を目指して全体を書き換える。あるいは、最後の 1 ケースに固執して既に通っているケースを壊す。
 
-**具体例**: ベースライン 4/21 (19%) から始め、最初の修正で feature-request カテゴリだけを狙って 12/21 へ。次の反復で vague カテゴリを狙う、というように制約付きで反復する。実際に、ある参加者は 20/21 まで通した後に最後の 1 件のために全体を書き換え、12/21 まで逆戻りした。単一ケース完璧主義は罠である。
+**具体例**: ベースライン 4/21 (19%) から始め、最初の修正で feature-request カテゴリだけを狙って 12/21 へ。次の反復で vague カテゴリを狙う、というように制約付きで反復する。実際に、ある参加者は 20/21 まで通した後に最後の 1 件のために全体を書き換え、12/21 まで逆戻り(ローラーコースター効果)した。単一ケース完璧主義は罠である。
+
+ハンズオン用の eval ハーネスは、`run_eval` を中心にこの「カテゴリ別に通過率を可視化する」構造を実装している。
+
+<details>
+<summary>Evalのソースコード例</summary>
+
+```python
+# Prompt_Rescue_solo.ipynb の eval ハーネスより
+def run_eval(client, prompts, cases_data, verbose=False):
+    """全 21 ケースを 1 プロンプト or プロンプトチェーンで実行し、4 軸スコアで判定する。"""
+    cases = cases_data["cases"]
+    categories = cases_data["categories"]
+    results = []
+    for case in cases:
+        # 単一 prompt とチェーンを同じ runner で扱う
+        if len(prompts) == 1:
+            raw_output = run_single_prompt(client, prompts[0], case["input"])
+        else:
+            raw_output = run_chain(client, prompts, case["input"])
+        parsed, parse_error = parse_output(raw_output)
+
+        # 応答ドラフトは LLM-as-judge で別途採点 (audited なケースのみ)
+        response_coherent = None
+        if case.get("audited_response") and parsed:
+            ok, _ = judge_response(client, case["input"],
+                                   parsed.get("priority", ""),
+                                   parsed.get("response", ""))
+            response_coherent = ok
+
+        result = score_case(
+            parsed=parsed, parse_error=parse_error,
+            input_text=case["input"],
+            gold_priority=case["gold_priority"],
+            gold_entities=case["gold_entities"],
+            response_coherent=response_coherent,
+            audited=case.get("audited_response", False),
+        )
+        result["case_id"] = case["id"]
+        result["category"] = case["category"]
+        results.append(result)
+
+    # カテゴリ別 (clean / multi-issue / vague / non-native / feature-request / complex) に集計
+    category_results = {}
+    for cat_key, cat_info in categories.items():
+        cat_results = [r for r in results if r["case_id"] in cat_info["case_ids"]]
+        category_results[cat_key] = {
+            "label": cat_info["label"],
+            "passed": sum(1 for r in cat_results if r["pass"]),
+            "total": len(cat_results),
+        }
+    total_passed = sum(1 for r in results if r["pass"])
+    return {"results": results, "categories": category_results,
+            "total_passed": total_passed, "total_cases": len(cases)}
+```
+
+採点の中身は `score_case` が **4 つの判定軸を AND で集約** する。これが「どこで落ちたか」を後段で可視化する根拠になる。
+
+```python
+def score_case(parsed, parse_error, input_text, gold_priority, gold_entities,
+               response_coherent=None, audited=False):
+    json_ok, json_reason = check_valid_json(parsed, parse_error)
+    priority_ok, priority_reason = (
+        (False, "Skipped -- invalid JSON") if not json_ok
+        else check_priority(parsed, gold_priority)
+    )
+    entities_ok, entities_reason = (
+        (False, "Skipped -- invalid JSON") if not json_ok
+        else check_entities(parsed, input_text, gold_entities)
+    )
+    # response は audited ケースのみ judge にかける
+    if not audited:
+        response_ok, response_reason = True, "Auto-pass (non-audited case)"
+    elif not json_ok:
+        response_ok, response_reason = False, "Skipped -- invalid JSON"
+    elif response_coherent is None:
+        response_ok, response_reason = True, "Pending judge evaluation"
+    else:
+        response_ok = response_coherent
+        response_reason = "Judge: PASS" if response_coherent else "Judge: FAIL"
+
+    return {
+        "pass": json_ok and priority_ok and entities_ok and response_ok,
+        "criteria": {
+            "json_valid": {"pass": json_ok, "reason": json_reason},
+            "priority_correct": {"pass": priority_ok, "reason": priority_reason},
+            "entities_accurate": {"pass": entities_ok, "reason": entities_reason},
+            "response_coherent": {"pass": response_ok, "reason": response_reason},
+        },
+    }
+```
+
+特に効いているのが `check_entities` の **「入力テキストに登場しない値が抽出されたら捏造扱い」** という判定で、`PageLoader 2.1` や `affected_users: 5` のような hallucination を機械的に拾える。
+
+```python
+def check_entities(parsed, input_text, gold_entities):
+    entities = parsed.get("entities", {})
+    hallucinated = []
+    for field in REQUIRED_ENTITY_FIELDS:
+        value = entities.get(field)
+        if value is None or value == "" or value == []:
+            continue
+        if not _value_in_input(value, input_text):  # ← 入力に含まれない値は捏造
+            hallucinated.append(f"{field}={json.dumps(value)}")
+    if hallucinated:
+        return False, f"Possible hallucinated entities: {'; '.join(hallucinated)}"
+    return True, "All entities derivable from input"
+```
+
+応答ドラフトは決定論的に採点できないので、**LLM-as-judge** を分けて使う。判定基準を `JUDGE_SYSTEM_PROMPT` に書き、`PASS` / `FAIL` + 一文の理由を返させる。
+
+```python
+JUDGE_SYSTEM_PROMPT = """\
+You are an eval judge for a support ticket processing system.
+
+Rules:
+- The response must not contradict the priority classification
+- The response must address the actual content of the ticket
+- For feature requests classified as P4: the response must NOT promise to
+  "fix" it or treat it as a bug
+- For vague tickets: the response should ask for more information
+- For multi-issue tickets: the response should acknowledge all issues
+- Tone should be professional regardless of the ticket's tone
+
+Reply with exactly one line: PASS or FAIL followed by a one-sentence reason.
+"""
+```
+
+この 4 軸 (JSON 妥当性 / priority 一致 / entity 非捏造 / response 一貫性) を **AND で集約** することで、「partial pass」を排除している。priority だけ当たっても entities が捏造なら fail、JSON が壊れていれば残りの 3 軸はスキップ扱いで自動 fail。各イテレーションで `criteria.<軸>.reason` を眺めると「どの軸を今直しているか」が明確になり、ローラーコースター効果に巻き込まれにくくなる。
+
+</details>
 
 ### Prompt chaining はデバッグと費用最適化を兼ねる
 
@@ -89,7 +229,70 @@ free: true
 
 **アンチパターン**: 優先度判定・エンティティ抽出・応答生成を 1 プロンプトに詰め込む。応答生成タスクが共感的なトーンを誘発し、優先度判定が引きずられて高くなる、というタスク間干渉が起きる。
 
-**具体例**: 5 秒のレイテンシ制約下では、3 ステップにすると各ステップが ~1.5 秒以下である必要がある。Few-shot を 2〜3 件、CoT のステップを 4〜5 個までに抑える。ステップ分割によってどこで壊れたかが特定しやすくなる。
+**具体例**: 5 秒のレイテンシ制約下では、3 ステップにすると各ステップが ~1.5 秒以下である必要がある。Few-shot を 2〜3 件、CoT のステップを 4〜5 個までに抑える。ステップ分割によってどこで壊れたかが特定しやすくなる。ハンズオン用の eval ハーネスには、複数の system prompt を順に流す `run_chain` ヘルパが用意されている。
+
+<details>
+<summary>Prompt Chainingのソースコード例</summary>
+
+```python
+# Prompt_Rescue_solo.ipynb の eval ハーネスより
+def run_single_prompt(client, system_prompt, user_input):
+    result = _call_api_with_retry(
+        client, model=MODEL, max_tokens=MAX_TOKENS, system=system_prompt,
+        messages=[{"role": "user", "content": user_input}],
+    )
+    return result.content[0].text
+
+
+def run_chain(client, prompts, user_input):
+    """複数の system prompt を順に流すプロンプトチェーン。
+    各 stage の出力は次 stage の user 入力に追記される。"""
+    output = ""
+    step_outputs = []
+    for i, system_prompt in enumerate(prompts):
+        if i == 0:
+            user_message = user_input
+        else:
+            parts = [f"ORIGINAL TICKET:\n{user_input}"]
+            for j, prev_output in enumerate(step_outputs):
+                parts.append(f"STEP {j+1} OUTPUT:\n{prev_output}")
+            user_message = "\n\n".join(parts)
+        try:
+            output = run_single_prompt(client, system_prompt, user_message)
+        except Exception as e:
+            output = json.dumps({"error": f"Chain step {i+1} failed: {e}"})
+        step_outputs.append(output)
+    return output
+```
+
+呼び出し側は stage ごとの system prompt をリストで渡すだけで済む。
+
+```python
+PRIORITY_SYSTEM = """\
+You are a support triage classifier. Classify the ticket into P1/P2/P3/P4
+based on business impact (not tone). Return JSON: {"priority": "..."}.
+"""
+
+ENTITIES_SYSTEM = """\
+Extract product, version, error_codes, affected_users from the ticket.
+Use null for unstated fields. Never guess. Return JSON only.
+"""
+
+RESPONSE_SYSTEM = """\
+Draft a customer-facing response using the prior STEP outputs.
+Tone must match the priority. Return JSON: {"response": "..."}.
+"""
+
+final_json = run_chain(
+    client,
+    prompts=[PRIORITY_SYSTEM, ENTITIES_SYSTEM, RESPONSE_SYSTEM],
+    user_input=ticket_text,
+)
+```
+
+ポイントは 2 つ。1 つめは **各 stage で `system` を完全に差し替える** ことで、Claude の人格・出力契約・Few-shot をそのステージに最適化できる点。2 つめは **過去 stage の出力を `ORIGINAL TICKET` と `STEP N OUTPUT` のラベル付きで次 stage に渡す** 構造で、後段が前段の判定結果を参照しつつ元のチケット本文も見直せる点。`run_single_prompt` 内部で `_call_api_with_retry` を呼んでいるため、429/529 はチェーン全体で自動リトライされる。
+
+</details>
 
 ### 「賢く振る舞え」は効かない
 
@@ -222,27 +425,27 @@ client.messages.create(
 )
 ```
 
-## 気づきと前提が崩れた瞬間
+## 気づき
 
-ベースラインを回した瞬間、21 件のチケットが最初の一発で半分しか通らなかったのは衝撃だった。POC のデモでは普通に動いていたはずのプロンプトが、本番想定のチケットを通した瞬間、半分以上で外れる。最初に感じたのは「プロンプトが下手だったのか?」という素朴な疑問だった。だが画面に並んだ失敗ケースを 1 件ずつ眺めていくと、それは違うことが分かってきた。プロンプトを「上手く書く」ことに本質はない。失敗の型を見つけ、仮説を立て、修正し、もう一度回す。その反復ループそのものが、プロンプトエンジニアリングの正体だった。
+プロンプトの失敗の型を見つけ、仮説を立て、修正し、もう一度回す。その反復ループそのものが、プロンプトエンジニアリングの正体である。
 
-ひっくり返った前提は 2 つある。
+- **否定形「〜するな」で抑止できると思っていた** こと。「製品名を捏造しないでください」と書けば伝わると思っていたが、実際にはモデルは否定形をあっさり見落とす。Bad / Good 対比に書き換え、それぞれに `<reason>` を添えた途端、捏造系の失敗が一気に減った。「禁止」を書くより、「失敗例と望ましい例と、その理由」を並べるほうが、構造として強い、というのは想像以上の効き目だった。
 
-ひとつは、否定形「〜するな」で抑止できると思っていたこと。「製品名を捏造しないでください」と書けば伝わると思っていたが、実際にはモデルは否定形をあっさり見落とす。Bad / Good 対比に書き換え、それぞれに `<reason>` を添えた途端、捏造系の失敗が一気に減った。「禁止」を書くより、「失敗例と望ましい例と、その理由」を並べるほうが、構造として強い、というのは想像以上の効き目だった。
+- **1 ショットで完璧を目指せると思っていた**こと。ある参加者は、20/21 まで通った後に最後の 1 件に固執して全体を書き換え、スコアが 12/21 まで逆戻りしたという。話を聞きながら、これは自分でも同じことをやりかけたなと感じた。カテゴリ別スコアを見て、最も弱い 1 カテゴリだけを直す。clean を壊さずに feature-request を上げる。次の反復で vague を狙う。そういう制約付きの反復のほうが、結果的に早く 21/21 へ到達した。
 
-もうひとつは、1 ショットで完璧を目指せると思っていたこと。ある参加者は、20/21 まで通った後に最後の 1 件に固執して全体を書き換え、スコアが 12/21 まで逆戻りしたという。話を聞きながら、これは自分でも同じことをやりかけたなと感じた。カテゴリ別スコアを見て、最も弱い 1 カテゴリだけを直す。clean を壊さずに feature-request を上げる。次の反復で vague を狙う。そういう制約付きの反復のほうが、結果的に早く 21/21 へ到達した。
+- **system prompt は「1 セッションを通じて固定する役割定義」だと思っていた** こと。実際は SDK の `messages.create()` を呼ぶたびに別の `system` を渡せるので、prompt chaining の各 stage ごとに **system prompt 自体を差し替えられる**。「優先度判定の Claude」「エンティティ抽出の Claude」「応答ドラフトの Claude」を、それぞれ別の人格として 3 回 API を呼ぶだけで実装できる ── という発見は地味だが大きかった。1 つの巨大プロンプトに役割・ルール・例・出力フォーマットを全部詰め込もうとしていたのは、SDK が許す自由度を自分が見落としていただけだった。チェーン化すれば各 stage の system が短くなり、Few-shot もそのステージ用に絞れる。さらに stage ごとにモデル (`haiku` / `sonnet`) を差し替える、`output_config.format` を最終 stage にだけ当てる、`tool_choice` を stage ごとに変える、といった粒度の制御が可能になる。プロンプトチェーニングは「クライアント側の制御フローで Claude を多人格化するパターン」だと、ここで腹落ちした。
 
-「うまく書く」のではなく、「測りながら直す」。プロンプトエンジニアリングが工学である、という言葉の意味が、このときようやく腹落ちした。
+- **Eval は「あれば便利」ではなく、プロンプトエンジニアリングの一部として必須である** こと。最初は eval を「実装したあとの動作確認」くらいに位置づけていたが、これは順序が逆だった。観点が網羅されていない eval で 90% に届いても、本番では平気で落ちる ── customer brief が挙げた 4 つの failure mode と本番想定の 6 つの input shape を最初に並べた瞬間、これが eval の **必要条件であって十分条件ではない** ことが見えた。さらに気づいたのは、**プロンプト本体にも「この観点で eval される」と書き込んでおく** ことの効き目だ。`<final_reminder>` に「all extracted fields explicitly present? / unknown fields set to null? / JSON matches schema exactly?」のような自己チェック項目を 3〜5 個並べると、出力直前にモデル自身が eval 軸を再活性化する。eval ハーネスとプロンプトの自己チェックは別の道具に見えて、実は同じ「観点の網羅性」を 2 方向から保証する仕組みだった。eval 観点を増やしたら、その軸をプロンプトの `<final_reminder>` にも反映する ── この往復が回って初めて、「測りながら直す」が回路として閉じる。
+
+「うまく書く」のではなく、「測りながら直す」。プロンプトエンジニアリングが工学である、という言葉の意味が理解できた。
 
 ## 現場に持ち帰りたいこと
 
-ハンズオンを抜けてから振り返ったときに、これは現場でもそのまま使えるな、と思った観点が 3 つある。
+- **Eval ハーネスをまず用意する**。プロンプトを書く前にテストケースを用意し、カテゴリ別にスコアを取れる状態を先に作る。これがないと、修正が本当に効いたのかが感覚でしか分からない。後段で起きた事故が、プロンプトのどの変更に起因するのかも追えなくなる。
 
-ひとつめは、**Eval ハーネスをまず用意する**。プロンプトを書く前にテストケースを用意し、カテゴリ別にスコアを取れる状態を先に作る。これがないと、修正が本当に効いたのかが感覚でしか分からない。後段で起きた事故が、プロンプトのどの変更に起因するのかも追えなくなる。
+- **prompt chaining による分割**。優先度・エンティティ・応答を 1 プロンプトで処理していたものを、3 ステップに分けると、各ステップが短くなり、Few-shot も対象を絞れて精度が上がる。「1 プロンプトで全部やろうとしない」という設計判断は、構造化と並ぶ最重要のレッスンだった。
 
-ふたつめは、**prompt chaining による分割**。優先度・エンティティ・応答を 1 プロンプトで処理していたものを、3 ステップに分けると、各ステップが短くなり、Few-shot も対象を絞れて精度が上がる。「1 プロンプトで全部やろうとしない」という設計判断は、構造化と並ぶ最重要のレッスンだった。
-
-みっつめは、**Confidence を必ず出力させる**。`high / medium / low` を返させ、low のときは追加情報要求に分岐する。これは単に分類精度を上げるだけでなく、「分からないものを分からないと言える」モデルにするための入口になる。後段ワークフローの設計が、確信度ベースで一段クリーンになる。
+- **Confidence を必ず出力させる**。`high / medium / low` を返させ、low のときは追加情報要求に分岐する。これは単に分類精度を上げるだけでなく、「分からないものを分からないと言える」モデルにするための入口になる。後段ワークフローの設計が、確信度ベースで一段クリーンになる。
 
 加えて、現実的な制約として `haiku` で 5 秒以内、という条件を意識しつづけたのも良い経験だった。Chain of Thought を冗長にし過ぎる、Few-shot を 10 件以上入れる、といった「品質は上がるが遅くなる」改善は、本番制約を破る。examples は 2〜3 件、CoT のステップは 4〜5 個まで、というあたりが現実解だ。
 
@@ -262,9 +465,9 @@ client.messages.create(
 
 ## 章末 — Eval なしでプロンプトを改善するのは、祈祷だ
 
-21 件のチケットをひたすら回し、失敗ログを眺め、仮説を立てて 1 行直し、再測定する。その繰り返しを 10 周もすると、プロンプトが「文章」ではなく「テストで担保された仕様」のように見え始める。
+21 件のチケットをひたすら回し、失敗ログを眺め、仮説を立てて 1 行直し、再測定する。その繰り返しを 10 周もすると、プロンプトが「文章」ではなく「テストで担保された仕様」として理解できる。
 
-Eval を持たずにプロンプトを直し続けるのは、結局のところ祈祷だ。書き換えるたびに「良くなった気がする」だけで、本当に良くなったかはわからない。逆に、カテゴリ別スコアと失敗ログをセットで持っていれば、プロンプトは少しずつ、確実に良くなる。
+Eval を持たずにプロンプトを直し続けるのは、結局のところ自己満足だ。書き換えるたびに「良くなった気がする」だけで、本当に良くなったかはわからない。逆に、カテゴリ別スコアと失敗ログをセットで持っていれば、プロンプトは少しずつ、確実に良くなる。
 
 次章では、プロンプト単体ではなく **エージェントが複数ステップで動いたときに何が壊れるのか** を扱う。プロンプトを救ったあとに待っているのは、システムプロンプト・ツール記述・実行トレースが絡む、もう一段大きな問題空間だ。
 

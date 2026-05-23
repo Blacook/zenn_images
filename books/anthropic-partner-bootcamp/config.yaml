@@ -9,10 +9,10 @@ published: false
 price: 0
 chapters:
   - 01-overview
-  # - 02-claude-code-inventory
-  # - 03-developer-platform
-  # - 04-prompt-rescue
-  # - 05-diagnosing-ai-problems
+  - 02-claude-code-inventory
+  - 03-developer-platform
+  - 04-prompt-rescue
+  - 05-diagnosing-ai-problems
   # - 06-evals
   # - 07-inference-optimization
   # - 08-context-engineering
