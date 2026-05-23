@@ -1,150 +1,112 @@
 ---
-title: "Developer Platform — 5つの足場と Messages API の中身"
+title: "Developer Platform — Messages API でエージェントを素手で組む"
 free: true
 ---
 
-> **ハンズオン公式リポジトリ**: https://github.com/victorsteeb/Basecamp-Exercises.git
-> **該当ディレクトリ**: `day1/02_developer-platform/`
-> **題材**: TechFlow（中堅 B2B SaaS、500+ tickets/day）のサポートチケット triage エージェント
+> **リポジトリ**: https://github.com/victorsteeb/Basecamp-Exercises.git
+> **該当ディレクトリ**: `day1/02_developer-platform/` (`Developer_Platform.ipynb`)
 > **モデル**: `claude-sonnet-4-6`
 
-## はじめに — フレームワークを外したら、ループが見えた
+## はじめに — 「Agent SDK の下」を一度だけ自分の手で組む
 
-サンフランシスコの2日目、`while response.stop_reason == "tool_use":` という一行を自分の指で書いた瞬間のことを、いまでもよく覚えている。
+Anthropic Developer Platform は、Agent SDK、Claude Code、Batch API、Files API までを含む大きな面だが、この章ではその最下層にあたる **Messages API** だけを扱う。題材は TechFlow（中堅 B2B SaaS）の Tier 1 サポート triage エージェントで、tool use・adaptive thinking・structured output・streaming の 4 要素を **フレームワークを噛まさず** に 1 本のループへ組み上げる。SDK で隠れている境界線が見えると、上層がなぜそう設計されているのか、どこを触ると壊れるのかが見える ── というのが本章のねらいである。
 
-それまで、エージェントは私にとって「LangChain や Agent SDK が裏でうまくやってくれる何か」だった。`agent.run()` を呼ぶと、ツールが順番に叩かれ、最後にきれいな結果が返ってくる。便利だけれど、何かが起きているはずなのに、その何かの輪郭がいつもぼやけていた。
+## 題材 — TechFlow Tier 1 自動化の概要
 
-現地のハンズオンで Messages API を直接叩き、TechFlow のサポートチケット triage エージェントを **何のフレームワークも噛まさずに** 組み立てたとき、その霧が一気に晴れた。エージェントとは、要するに **`stop_reason` を見ながら回す while ループ** だった。ツール呼び出しは、JSON で帰ってきた `tool_use` ブロックを実装にディスパッチし、結果を `tool_result` で次のターンに積んでいるだけだった。隠されていたのは魔法ではなく、ただの制御構造だったのだ、と腹落ちした。
+TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+ tickets/day`) のチケットを 1 件あたり約 8 分で処理している。これを Claude Sonnet 4.6 に置き換え、Tier 2 へのエスカレーション以外を自動化するのが Build-Along の目的である。
 
-この章はまず「エージェントに知識とツールアクセスを与える足場は何種類あり、いつどれを選ぶか」という地図を広げる。そのうえで、地図の真ん中にある Messages API に潜り、tool use・adaptive thinking・structured output・streaming の 5 要素がどう合成されてひとつのエージェントになるのかを、自分の言葉で振り返る。
+エージェントが触れるのは 3 つのツールだけ。
 
-### 講義の入口 — 「12 個の MCP を建てるべきか？」
+| ツール           | 役割                                                          |
+| ---------------- | ------------------------------------------------------------- |
+| `get_ticket`     | ID から本文・顧客・優先度・プロダクト領域を取得               |
+| `search_kb`      | キーワードで Knowledge Base を検索 (最大 3 件)                |
+| `resolve_ticket` | 解決ノートを書いて `resolved` / `escalated` / `closed` に遷移 |
 
-セッションの冒頭で、講師は会場に対してこう問いを置いた。「自社のデータ源それぞれに対して、専用の MCP サーバを 12 個立てるべきか？」 ── 多くの参加者が直感的に頷きかける問いだった。だが講師の答えは即座に「No」だった。
+データはモック。サンプルチケットは `TKT-1042`（重複請求）、`TKT-1043`（API キーローテーション後の webhook 失敗）、`TKT-1044`（バルクエクスポート要望）、`TKT-1045`（管理者 MFA ロックアウト、Critical）、`TKT-1046`（Singapore 拠点で API 間欠 500 エラー）の 5 件。Knowledge Base は `KB-001`〜`KB-007` の 7 本で、典型対応（重複請求の返金フロー、webhook 署名鍵の再生成、admin recovery など）と外し（バルクエクスポートはロードマップ）の両方が混ざる構成になっている。
 
-「あなたが持っているのは MCP だけじゃない。CLI access、API、Skills、そして Plugins という別の足場がある。それぞれの得意分野を素直に使い分ければよくて、すべてを MCP で揃える必要はない。」 ── これがこの章の出発点になる。以下、5つの足場を順に並べ、最後にもう一度この問いに戻る。
+道具立てを最小にすることで、ループ・思考・構造化・ストリームの 4 要素を組み上げる「外側」に意識を集中できる構成になっている。
 
-## 題材 — TechFlow の Tier 1 を肩代わりする
+## ベストプラクティス・アンチパターン・重要ポイント
 
-題材は中堅 B2B SaaS の TechFlow。Tier 1 サポートが 1 日 500 件超のチケットを 1 件あたり約 8 分で捌いている、という設定だ。これを Claude に置き換える。
+### Agentic loop は `stop_reason` を軸に組む
 
-エージェントが持つ道具は 3 つだけだった。
+**原則**: エージェントの本体は「`response.stop_reason == "tool_use"` のあいだ回す while ループ」である。各イテレーションで `tool_use` ブロックを実装にディスパッチし、結果を `tool_result` で次ターンへ積む。`stop_reason` の取りうる値は 3 つで、`"tool_use"` ならループ継続、`"end_turn"` で終了、`"max_tokens"` は実質エラーとして扱う。
 
-| ツール | 役割 |
-|---|---|
-| `get_ticket` | チケット ID から本文・顧客・優先度・プロダクト領域を取得 |
-| `search_kb` | キーワードで Knowledge Base を検索 |
-| `resolve_ticket` | 解決ノートを書いてチケットを `resolved` / `escalated` / `closed` に遷移 |
+**アンチパターン**: ループ脱出条件をターン数や時間に置く実装。Claude は途中で「もう一段ツールを呼びたい」と判断する場合があり、`stop_reason` 以外で打ち切ると tool call が宙に浮き、次ターンに整合性エラーを返す。
 
-道具立てが小さいぶん、エージェントの「外側」をどう組むかに意識を集中できる。これがハンズオン題材としてとても良かった。
+**ハンズオンでの具体例**: ノートブック Part 1 の `run_agent()` は、`max_tokens=32000`・`thinking={"type": "adaptive"}` を全コールに渡し、`while response.stop_reason == "tool_use":` 直下で `tool_result` を組み立てる。`tool_result` の `tool_use_id` には **`block.id`（受信した `ToolUseBlock` の id）** を必ず入れる。これがないと API がエラーで弾く。
 
-## 何を学んだか — 5つの足場と Messages API の中身
+### 思考モードと effort は粒度を分ける
 
-### 5つの足場 — CLI / API / MCP / Skills / Plugins
+**原則**: `thinking` パラメタは「思考をどう生成するか」、`output_config.effort` は「どこまで深く考えるか」を制御する。`thinking` の値は `"adaptive"`（複雑さに応じて自動）／`"enabled"`（常に生成）／`"none"`（無効）の 3 種。`effort` は `"low"` / `"medium"` / `"high"` / `"xhigh"` / `"max"` の 5 段階で、**API デフォルトは `"high"`**（パラメータ省略時と同じ挙動）。`xhigh` は Claude Opus 4.7 専用の拡張レベルで、長時間のエージェント・コーディングタスク向けに Anthropic は **Opus 4.7 のコーディング／エージェント用途は `xhigh` から始めることを推奨**している。`max` は Mythos Preview / Opus 4.7 / Opus 4.6 / Sonnet 4.6 で利用可能な絶対最大の能力。adaptive + effort の組み合わせで「複雑なら深く、簡単なら浅く、上限はこちらで握る」が成立する。
 
-エージェントに「外の世界」を触らせる手段は今や少なくない。決定的な正解は無いが、講師は5つの足場をそれぞれの **向き不向き／壊れ方／いつ選ぶか** で並べてくれた。
+**アンチパターン**: 本番系で常に `effort="max"` や `xhigh` を貼る。レスポンス時間とトークン課金が数倍〜十数倍に膨らみ、500 件/日のスケールで経済合理性が崩壊する。逆に、曖昧チケットを `low` に固定すると、必要な仮説立てが行われずミスエスカレーションが増える。`high` をデフォルトと知らずに「念のため `xhigh`」を貼るのも、Sonnet 系では無効な値で実行時エラーになる罠がある（`xhigh` は Opus 4.7 限定）。
 
-### CLI access — POC の最短距離
+**ハンズオンでの具体例**: Part 2 の `run_agent_thinking()` は同一チケット `TKT-1046`（Singapore 拠点・15% の API が間欠 500）を `high` と `low` で連投する。`high` の思考トレースには「Singapore region routing degradation の可能性」「retry-success の頻度が rate limit パターンと一致しない」といった仮説が立つ一方、`low` ではほぼ言及されない。経過時間も `high≈22s` / `low≈19s` と差が出る。Opus 4.7 で実運用に持ち上げるなら、複雑チケットを `xhigh`、単純チケットを `medium`〜`low` にルーティングするのが筋の良い設計になる。
 
-- **向き不向き**: 足場が極小、Bloomberg / Shopify / Snowflake のような既存データ源を「とにかく繋いで、モデルに食わせる」のが最速でできる。「これだけのデータを渡せばこれだけ出るんですよ」を見せるデモ・POC に最適。
-- **壊れ方**: 長期運用に耐えない。スケールしない。
-- **いつ選ぶか**: POC・デモ・探索フェーズ限定。クライアントへの初回提案で「もし内部データを渡したらこうなる」を示す瞬間に限る。
+### `format` (JSON schema) は最終 call でのみ使う
 
-### API — 予測可能・繰り返しに強い
+**原則**: `output_config.format` を渡すと、Claude の **すべてのテキスト出力が JSON Schema に制約される**。これが効くのはツールループが完了したあとの最終呼び出しに限られる。
 
-- **向き不向き**: エコシステムにある既存ソフトはすでに API を叩いている。「毎回同じ入力で同じ出力が返ってくる」種類のやり取りには、これ以上ない最適解。
-- **壊れ方**: エージェントが「毎回違う 4 つのシステムに違う方法でアクセスする」種類の柔軟性を要求しはじめると破綻する。固定スキーマに引きずられて、エージェントが取りたい挙動を取れなくなる。
-- **いつ選ぶか**: 入出力が安定し、繰り返し性が高いとき。エージェントの判断ではなく仕様で挙動が決まる部分を担う。
+**アンチパターン**: ループ中の API コールに `format` を入れる。`tool_use` を返したいタイミングで「テキストは JSON でなければならない」と引っ張られ、ツール呼び出しが壊れる。スキーマで `additionalProperties` を省略するのも罠で、Claude が定義外のフィールドを生やして下流のパースが死ぬ。
 
-### MCP — M×N を M+N に畳む
+**ハンズオンでの具体例**: Part 1 後半の `run_agent_structured()` は、ツールループ中は `output_config` を渡さず、ループ後に `messages` へ "Provide your structured resolution as JSON." を追加し、**1 度だけ** `output_config={"format": RESOLUTION_SCHEMA}` と `tool_choice={"type": "none"}` を併用して構造化 JSON を取り出す。スキーマには `additionalProperties: False` を必ず入れる。`tool_choice` の取りうる値は `none` / `auto` / `any` / `{"type": "tool", "name": ...}` の 4 種で、最終 call では `none` を明示する。
 
-- **向き不向き**: 旧世界では M クライアント × N サービスで M×N の統合点を抱えていたが、MCP はクライアントとサーバを分離することで統合点を M+N に減らす。クライアント側は同じインターフェイスのままサーバ側を差し替えられるので、上層のコードを書き直さずにツールを増減できる。LLM はプロトコルを「箱から出してすぐ」理解できるので、エージェントとの相性も良い。
-- **壊れ方**: ツールを繋ぎすぎると context bloat が起きる。**目安として 15 ツールを超えたあたり** から、モデルは人間の従業員と同じく「どのツールをいつ使うか」を取り違えはじめる。
-- **いつ選ぶか**: 入力が不完全でも問題を解く柔軟性が必要なとき、複数システムを跨いだ orchestration が必要なとき。講師が挙げた小ネタが象徴的だった ── 「4 つのシステムを横断するエージェントが、途中で Salesforce のあるデータを取りこぼしているのに、それに気づかず最後まで進んでしまう」。この **取りこぼしを catch & fix できる場所** が MCP のオーケストレーション層だ、というのが MCP の価値の核心らしい。
+### Tool description は呼ばれ方を決める
 
-### Skills — 知識層としての足場
+**原則**: `tool` スキーマの `description` は Claude にとっての API ドキュメントで、`name` と `input_schema` 以上に「いつ呼ぶか／呼ばないか」を左右する。`input_schema` の各プロパティ `description` まで具体例を書くと、入力の質も上がる。
 
-会場でも一番質問が集まったのがこの Skills だった。講師の語り口を整理すると、Skills が機能するための骨格は4つに集約される。
+**アンチパターン**: 「Search the knowledge base.」のような事務的な 1 行で済ませる。Claude は「順序」「前提」「不可ケース」を読み取れず、`get_ticket` を飛ばして `search_kb` をいきなり呼ぶ、解決前に `resolve_ticket` を打つ、といった経路を取りはじめる。
 
-- **Progressive disclosure** ── Claude はまず title と description だけを読んで「このスキルに踏み込むか」を判断する。本文はそのスキルが必要だと判断したあとで初めて context に積まれる。これが context budget を節約する核になっており、Skills という形式の設計思想の中心にある。
-- **Title と description を、目的特化で短く書く** ── 例として「front-end design」スキルが紹介された。description は超タイト、name も "front end design" のように直接的。曖昧さを早い段階で潰すことで、無駄なロードが起きない。
-- **Directional commitment** ── 「modern」のような主観的な形容詞を排除し、typography / motion / spatial composition のように **方向を確定する具体性** を入れる。「最も賢い存在として振る舞え」のような中身のない強調はモデルを賢くしない、というのが講師の繰り返した警句だった。
-- **Hard negatives** ── 「絶対にこうするな」のリストをスキル本文に書く。エンタープライズで Skills を運用している組織は、本番で観測した失敗パターンを 5〜6 回観測したら必ずスキルに反映する、というワークフローを持っている。出力品質の改善余地が一番大きいのは、実はここだという。
+**ハンズオンでの具体例**: ノートブックの `search_kb` description は "Use this to find troubleshooting steps, policies, or known solutions **before attempting to resolve a ticket.**" と **順序のヒント** が埋まっている。`resolve_ticket` の `status` プロパティは `enum: ["resolved", "escalated", "closed"]` と値域を絞り、description で `resolved = fix applied; escalated = needs Tier 2; closed = duplicate or invalid` と意味を明示している。これにより Claude のツール選択がほぼブレない。
 
-### Plugins — 合成レイヤ
+### Content block を取りこぼさない
 
-- 上の足場（Skills・MCP・API）をまとめてパッケージにするためのレイヤ。Anthropic 公式で finance / data analyst のような Plugin が公開されはじめており、Claude Code UI 内に marketplace 的な入口がある。
-- 個別の Skill や MCP を毎回手で組み合わせるのではなく、「ユースケース単位のひと固まり」として配布できるので、配布性と再現性が高まる。
+**原則**: `response.content` は `ThinkingBlock` / `ToolUseBlock` / `TextBlock` の混在リストで返る。assistant ターンを次ターンへ積み戻すときは **`response.content` をそのまま** 渡す。extended thinking はサーバ側で連続性を検証しているため、`ThinkingBlock` を落とすと整合性エラーになる。
 
-### 「結局どう選ぶか」— 講師が最後に出した答え
+**アンチパターン**: `text` だけ・`tool_use` だけを抽出して `messages` に積む。adaptive thinking 有効時には必ず壊れる。また、最終の構造化 JSON を取り出すときに `content[0]` を見る実装も罠で、`[ThinkingBlock, TextBlock]` の並びだと JSON は **末尾の TextBlock** に入る。
 
-冒頭の問いに戻る。
-
-> 「12 個の MCP を建てるべきか？」 ── No。
-> API に得意なこと（予測可能・繰り返し）をやらせ、MCP に得意なこと（柔軟な orchestration）をやらせ、その上に Skills という知識層を被せて、モデルが「いつ何を呼ぶか」を導けるようにする。Plugins はそれらをユースケース単位に束ねて配布する入れ物。
-
-これは現地で繰り返し提示された **層の構成図** で、私が Bootcamp で受け取った最も実務的なアーキテクチャ観のひとつになった。
-
-### 5 要素がどう合成されるか — Messages API の積み方
-
-ハンズオンノートブック `Developer_Platform.ipynb` は、同じ triage タスクの上に要素を 1 枚ずつ重ねていく構成になっていた。順序自体が学びだったので、その並びで振り返る。
-
-最初に **ツール schema** を書く。`name` と `description`、`input_schema` の 3 点セットだ。書きながら気づいたのは、`description` は Claude にとっての **API ドキュメント** だということ。曖昧に書けば曖昧に呼ばれるし、「いつ呼ぶか」「いつ呼ばないか」まで書けば、ツール選択ミスが目に見えて減る。
-
-次に **agentic loop**。`response.stop_reason == "tool_use"` のあいだ、`tool_use` ブロックを実装にディスパッチし、結果を `tool_result` として messages に積み、もう一度 `messages.create()` を叩く。それだけ。`end_turn` が返ってきたらループを抜ける。これが本当に、本当に、それだけだった、というのが一番の発見だった。
-
-そこに **structured output** を被せる。ループが終わったあと、もう 1 度だけ Claude を呼んで、解決サマリーを JSON Schema に従って取り出す。ここで `output_config.format` を初めて指定する。
-
-さらに **adaptive thinking + `effort`** を全コールに足す。`thinking={"type": "adaptive"}` で「複雑なら深く、簡単なら浅く」を任せ、`effort` で深さの最大幅を握る。
-
-最後に **streaming**。`client.messages.stream()` に切り替えると、`content_block_start` → `content_block_delta` → `content_block_stop` のイベントが時系列で流れてくる。`thinking_delta` と `text_delta` と `input_json_delta` を別々にハンドリングすると、思考・応答・ツール引数が **それぞれ独立した流れとして見える**。これも、SDK 越しでは絶対に体感できなかった景色だった。
-
-これら 5 要素は、互いに無関係に積めるわけではなく、**合成順序とスコープに依存関係がある**。それを身体で覚えるのが、このハンズオンの本当の目的だったように思う。
-
-## 前提が崩れた瞬間
-
-「フレームワーク無しで書く」というのは、つまり **誤解していた前提が次々と剥がれる** ということでもあった。記憶に残っているものをそのまま並べる。
-
-**思考ブロックは next call に渡さなくていい、と思っていた。** これは違った。`response.content` に `ThinkingBlock` が混ざっていたら、`text` や `tool_use` と一緒に **そのまま** 次の `messages` に積まないといけない。落とすと整合性エラーで弾かれる。extended thinking はサーバ側で連続性を検証している、という説明を聞いて、「ああ、状態を持っているのか」と理解した。
+**ハンズオンでの具体例**:
 
 ```python
-# 私が最初にやってしまった書き方（壊れる）
+# NG: thinking を捨てて積み戻す
 filtered = [b for b in response.content if b.type != "thinking"]
 messages.append({"role": "assistant", "content": filtered})
 
-# 正解
+# OK: そのまま渡す
 messages.append({"role": "assistant", "content": response.content})
-```
 
-**`effort="high"` にしておけば安心、と思っていた。** これも違った。`high` は確かに深く考えてくれる。でもレスポンス時間が数倍に伸び、思考トークンも全部課金されるので、500 件/日のスケールでは経済合理性が一瞬で崩れる。請求の二重課金のような単純なチケットは `low` で十分捌けるし、API 500 エラーの間欠障害のような曖昧なチケットでのみ `high` に振る、というルーティングが現実解だ、というのが講師の言だった。同じチケットを `low` と `high` で並べて投げる演習があり、`high` のほうの思考トレースに "Singapore region routing issue" みたいな仮説が立っているのを見て、「これは確かに `high` が要る」と納得した。
-
-**`output_config.format` は最初から付けっぱなしでよさそう、と思っていた。** これは一番派手にハマるパターンらしい。`format` を指定すると、Claude の **すべてのテキスト出力が JSON Schema に制約される**。ツールループ中にこれを有効にしていると、Claude が `tool_use` を返したい場面で「テキストは JSON でないとダメ」と引っ張られ、ツール呼び出しが壊れる。**ループ中は `effort` だけ、最終コールでだけ `format`**、というのが鉄則だった。
-
-```python
-# ループ中
-output_config={"effort": effort}
-
-# 最終構造化出力
-output_config={"effort": effort, "format": RESOLUTION_SCHEMA}
-tool_choice={"type": "none"}  # ここも忘れずに
-```
-
-**`response.content` の最初の text ブロックを読めばよい、と思っていた。** これも罠だった。adaptive thinking 有効時、`content` は `[ThinkingBlock, TextBlock, ...]` の並びで返ってくる。JSON は **最後の** text ブロックに入っている。最初を見にいくと、`thinking` の手前にある中間的なテキストを掴んでしまうことがある。
-
-```python
+# 構造化 JSON は末尾の TextBlock から取る
 text_blocks = [b for b in response.content if b.type == "text" and b.text.strip()]
 data = json.loads(text_blocks[-1].text)
 ```
 
-どれも、SDK が抽象化してくれていたら一生気づかなかったたぐいの肌触りだ。
+`ToolUseBlock` の `block.id` は対応する `tool_result.tool_use_id` と一対一で紐付く。`block.name` / `block.input` (dict) でツール呼び出し本体を取り出す。
+
+### Streaming は UX 改善メトリクスである
+
+**原則**: `client.messages.stream()` はコンテキストマネージャで、`content_block_start` / `content_block_delta` / `content_block_stop` の 3 種イベントが順番に流れる。`content_block_delta` の `delta.type` は `thinking_delta`（思考トークン）／`text_delta`（応答トークン）／`input_json_delta`（ツール引数 JSON の断片）の 3 種で、これらを別々にハンドリングすると思考・応答・ツール引数が独立した流れとして可視化できる。ストリーム終了後は `stream.get_final_message()` で完全な `Message` オブジェクトを取得する。
+
+**アンチパターン**: ストリーミングをトークン節約や速度短縮の手段だと誤解すること。実体は UX 上の体感改善 ── 「2 段落待たせる」のではなく「1 文ずつ流れる」 ── であって、レイテンシ自体は短くならない。また、ストリーム中に `block.input` を読もうとしても、ツール引数 JSON は `get_final_message()` 呼び出し後に確定するため、ストリーム終了前のアクセスは不完全な値を返す。
+
+**ハンズオンでの具体例**: Part 3 の `run_agent_streaming()` では `content_block_start` で `block.type` を見て `[Thinking]` / `[Tool: name]` / `[Response]` のラベルを切り替え、`content_block_delta` の 3 種 delta をそれぞれ `flush=True` で書き出す。最終構造化出力もストリームで取り、`text_delta` だけを画面に流す。
+
+### クライアント側の地味な落とし穴
+
+**原則**: 「Messages API はサーバ側に状態を持ち、SDK は薄い HTTP クライアントである」と考えて構成パラメタを揃える。
+
+**アンチパターン**:
+
+- `timeout` を省略する。`max_tokens > 21333` で非ストリーミング呼び出しをすると、SDK デフォルトのタイムアウトに先に当たって落ちる。
+- API キーをノートブックや Git にハードコードする。
+- 1 年前のプロンプト・スキル定義を新モデルに使い回す（旧モデル向けの「最も賢い存在として振る舞え」「役割を与える」式のメタ指示は、新モデルではノイズになる場合がある）。
+
+**ハンズオンでの具体例**: ノートブック冒頭で `anthropic.Anthropic(timeout=900.0)` と明示している。API キーは `os.environ["ANTHROPIC_API_KEY"]` 経由で読み、`client.messages.create()` の `model` には `MODEL = "claude-sonnet-4-6"` を渡す。Setup セルは接続確認 (`Reply with only: ready`) と SDK バージョン表示を兼ねており、これを毎回最初に走らせるとデバッグが楽になる。
 
 ## 押さえておきたいコード／設定
 
-ノートブックの該当部分を、自分が後で見返したくなる粒度に絞って残しておく。完全版は `day1/02_developer-platform/Developer_Platform.ipynb` にある。
-
 ### クライアント初期化
-
-API キーは環境変数経由で。**ノートブックや Git にキーを書かない**、というのは現地でも何度も念押しされた。
 
 ```python
 import os
@@ -157,7 +119,7 @@ client = anthropic.Anthropic(
 MODEL = "claude-sonnet-4-6"
 ```
 
-### ツール schema の最小例
+### ツール schema（順序ヒントを description に埋める）
 
 ```python
 tools = [
@@ -186,8 +148,6 @@ tools = [
 ]
 ```
 
-`description` の中に "before attempting to resolve a ticket" のような **順序のヒント** を書くと、Claude のツール選択が安定する、というのは現地で何度も目撃した。
-
 ### Agentic loop の骨格
 
 ```python
@@ -214,7 +174,7 @@ def run_agent(user_message: str):
                     "content": str(result),
                 })
 
-        # thinking ブロックも含めて、content をそのまま積む
+        # ThinkingBlock を含む content をそのまま積み戻す
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results})
 
@@ -230,47 +190,7 @@ def run_agent(user_message: str):
     return response
 ```
 
-このコードを自分の手で打ち、`end_turn` がちゃんと返ってきてループが抜ける瞬間を見たとき、本当にエージェントは「ただの while」なんだ、と笑ってしまった。
-
-### 最終構造化出力の差分
-
-```python
-RESOLUTION_SCHEMA = {
-    "type": "json_schema",
-    "schema": {
-        "type": "object",
-        "properties": {
-            "diagnosis": {"type": "string"},
-            "solution_steps": {"type": "array", "items": {"type": "string"}},
-            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-            "escalation_needed": {"type": "boolean"},
-            "category": {
-                "type": "string",
-                "enum": ["billing", "technical", "account", "feature_request"],
-            },
-        },
-        "required": [
-            "diagnosis", "solution_steps", "confidence",
-            "escalation_needed", "category",
-        ],
-        "additionalProperties": False,
-    },
-}
-
-final = client.messages.create(
-    model=MODEL,
-    max_tokens=8000,
-    system=SYSTEM_PROMPT,
-    output_config={"effort": effort, "format": RESOLUTION_SCHEMA},
-    tool_choice={"type": "none"},
-    thinking={"type": "adaptive"},
-    messages=messages,
-)
-```
-
-`additionalProperties: False` は地味だが重要だ、と感じた。これを書かないと Claude が schema にないフィールドを足してくることがあり、下流のパースが死ぬ。
-
-### Streaming のイベント分岐
+### Streaming の受信ループ
 
 ```python
 with client.messages.stream(
@@ -303,42 +223,77 @@ with client.messages.stream(
     response = stream.get_final_message()
 ```
 
-`input_json_delta` がツール引数 JSON の断片として流れてきて、`stream.get_final_message()` を呼んだ後でようやく完成形の `block.input` を取れる、というあたりは、ライブで見ないと挙動が想像できなかった部分だ。
+### 構造化出力の最終 call
 
-## Skills まわりで現地で交わされた Q&A
+```python
+RESOLUTION_SCHEMA = {
+    "type": "json_schema",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "diagnosis": {"type": "string"},
+            "solution_steps": {"type": "array", "items": {"type": "string"}},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+            "escalation_needed": {"type": "boolean"},
+            "category": {
+                "type": "string",
+                "enum": ["billing", "technical", "account", "feature_request"],
+            },
+        },
+        "required": [
+            "diagnosis", "solution_steps", "confidence",
+            "escalation_needed", "category",
+        ],
+        "additionalProperties": False,
+    },
+}
 
-Skills のパートは質疑が最も活発で、現場で運用している人たちのリアルな悩みが出てきた。要点だけ箇条書きで残しておく。
+messages.append({"role": "user",
+                 "content": "Provide your structured resolution as JSON."})
 
-- **Q. スキルの品質をどう測るか／公式ベンチマークはあるか？**
-  A. 公開ベンチマークは無い。Anthropic 公式の skill-writing skill に書かせて Claude 自身に評価させるのが現実解。可能なら eval を当て、A/B testing で改善前後を比較する。
-- **Q. スキルの marketplace はあるか／落としてきて使ってよいか？**
-  A. 存在する（Claude Code UI / desktop UI 経由）が、**セキュリティ脆弱性** が前面に立つ論点。OSS 由来のスキルは必ずレビューしてから使い、更新が走るので「最後に security review した日時」を運用記録として持っておく。
-- **Q. スキルの再利用と version control はどうしている？**
-  A. **スライスする** のが鉄則。「RFP 応答スキル」のような巨大スキルを作らず、interpretation / vulnerability / brand design のように単機能に切る。バージョン管理＋ A/B testing で「3 つ前の iteration がいちばん良かった」に戻れるようにしておく。
-- **Q. スキル同士の矛盾やハルシネーションをどう検出する？**
-  A. Eval を用意して引っかけるのが基本線。ただし「どのスキルが原因か」までは追いづらい。Claude は他モデルよりも「分からない」と言いやすく設計されているので、エージェント側に **「分からなければ human にエスカレーション」** の足場を組んでおく。1M トークンの context があるからといって全部使う必要はない、というのも繰り返された注意点。
-- **Q. スキル内でツール／手順を明示すべきか、モデルの判断に任せるか？**
-  A. **明示してよい**。スクリプトをスキル内に置いて「ここでこれを実行せよ」と書いている運用例もある。Skills は知識層であり、その下で MCP / API / Plugins を動かすための **オーケストレーション指示** を書ける場所だと位置づけるのがしっくり来る。
+final = client.messages.create(
+    model=MODEL,
+    max_tokens=8000,
+    system=SYSTEM_PROMPT,
+    output_config={"effort": effort, "format": RESOLUTION_SCHEMA},
+    tool_choice={"type": "none"},
+    thinking={"type": "adaptive"},
+    messages=messages,
+)
 
-最後に一つ、Q&A の流れで講師がこぼした一言を残しておきたい。「モデルが新しくなるたびに、CLAUDE.md やスキルを見直す癖を持つこと」 ── 1 年前のプロンプトは 1 年前のモデル向けに最適化されている。「役割を与える」「最も賢い存在として振る舞え」のような古い手癖は、今のモデルではむしろ不要、あるいはノイズになる。**スキルは書いて終わりではなく、モデルが進化するたびに読み返す対象** だ、というのが妙に印象に残った。
+text_blocks = [b for b in final.content if b.type == "text" and b.text.strip()]
+data = json.loads(text_blocks[-1].text)
+```
+
+## 気づき
+
+それまで、エージェントは私にとって「Agent SDK や類似フレームワークが裏でうまくやってくれる何か」だった。`agent.run()` を呼ぶと、ツールが順番に叩かれ、最後にきれいな結果が返ってくる。便利だけれど、何かが起きているはずなのに、その何かの輪郭がいつもぼやけていた。フレームワークを外したら、ループが見えた ── これがこの章で一番身体に残ったことだ。
+
+**「思考ブロックは next call に渡さなくていい」と思っていた** が、これは違った。`ThinkingBlock` は `text` や `tool_use` と一緒に **そのまま** 次の `messages` に積まないと整合性エラーで弾かれる。サーバ側に「思考の連続性」という状態があると知って、ようやく adaptive thinking の手触りが掴めた。
+
+**「`effort="high"` にしておけば安心」と思っていた** が、これも違った。`high` は確かに深く考えてくれるが、レスポンス時間とトークン課金が膨らむ。請求の二重課金のような単純チケットは `low` で十分捌け、API 間欠障害のような曖昧チケットでのみ `high` に振る、というルーティングが現実解になる。`TKT-1046` を `low` と `high` で並べて投げた瞬間、`high` 側のトレースに "Singapore region routing issue" の仮説が立っているのを見て、「これは確かに `high` が要る」と腹落ちした。
+
+そして workshop の素材では `high` / `medium` / `low` の 3 段階で説明されていたが、章をまとめる段でドキュメントを引き直してみると、実は **`low` / `medium` / `high` / `xhigh` / `max` の 5 段階** が正しい仕様だった。**API デフォルトは `high`**（パラメータ省略時と同じ）で、`xhigh` は Opus 4.7 専用の拡張レベル、`max` は Opus 4.6 / 4.7 と Sonnet 4.6 で使える絶対最大。Anthropic は Opus 4.7 のコーディングや長時間のエージェントタスクでは `xhigh` から始めることを推奨している。3 段階で思考停止していると、最も「考えさせる」ための引き出しを 2 つも見逃していたわけで、モデル世代と一緒に effort の階層ごと読み直す対象なのだと、ここでもう一度突きつけられた。
+
+**「`output_config.format` は最初から付けっぱなしでよさそう」と思っていた** が、一番派手にハマるパターンらしい。`format` は **すべてのテキスト出力に効く** ので、ツールループ中に有効化すると `tool_use` を返したいタイミングで Claude が引っ張られ、ツール呼び出しが壊れる。**ループ中は `effort` だけ、最終 call でだけ `format` + `tool_choice={"type": "none"}`**、というのが鉄則になった。
+
+**「`response.content` の最初の text ブロックを読めばよい」と思っていた** が、これも罠だった。adaptive thinking 有効時は `[ThinkingBlock, TextBlock, ...]` の並びで返り、JSON は **最後の** TextBlock に入る。`content[0]` を見にいくと、`thinking` の手前にある中間テキストを掴んでしまうことがある。
+
+Q&A の流れで一つ印象に残った言葉がある。**「モデルが新しくなるたびに、CLAUDE.md やスキルを見直す癖を持つこと」** ── 1 年前のプロンプトは 1 年前のモデル向けに最適化されている。「役割を与える」「最も賢い存在として振る舞え」のような古い手癖は、今のモデルではむしろノイズになる。Messages API のループも同じで、SDK バージョンと一緒に **`thinking` / `output_config` / `tool_choice` の前提を毎リリース読み直す** 対象だと思うようになった。
 
 ## 現場に持ち帰りたいこと
 
-### 3 層責務モデルとして指示の置き場所を分ける
+**3 層責務モデルで「指示の置き場所」を分ける。** エージェントの挙動を決める指示は 3 つの層に分けると整理しやすい。
 
-ハンズオンを通して一番強く残ったのは、エージェントの挙動を決める指示には **3 つの置き場所** があり、それぞれに固有の責務がある、という考え方だった。
+| 層                   | 何を書くか                                               |
+| -------------------- | -------------------------------------------------------- |
+| **System Prompt**    | エージェントのロール・SLA・エスカレーション基準          |
+| **Tool description** | そのツールを **いつ** 呼ぶか、入力の妥当性               |
+| **Tool 実装**        | 安全網。不正入力の弾き返し、ヒットなし時のフォールバック |
 
-| 層 | 何を書くか |
-|---|---|
-| **System Prompt** | エージェントのロール・SLA・エスカレーション基準 |
-| **Tool description** | そのツールを **いつ** 呼ぶか、入力の妥当性 |
-| **Tool 実装** | 安全網。不正入力の弾き返し、ヒットなし時のフォールバック |
+すべて system prompt に詰め込む実装が多いが、ツール選択の不具合は tool description に書くべきだし、「ヒットなし=エスカレーション候補」のような **次の手のヒント** はツール実装の戻り値（KB-000 の "Consider escalating to Tier 2 support." など）に埋めるべきだ。講師が繰り返した「ほとんどの AI システム障害はモデル問題ではなく prompt・agent 構成・tool 設計の問題である」という言葉は、この 3 層を意識すると具体的に効いてくる。
 
-すべてを system prompt に詰め込んでいる実装をよく見るけれど、ツール選択の不具合は tool description に書くべきだし、「ヒットなし=エスカレーション候補」のような **次の手のヒント** はツール実装側の戻り値に埋めるべきなのだ、と整理がついた。講師が「ほとんどの AI システム障害はモデル問題ではなく prompt・agent 構成・tool 設計の問題である」と何度も繰り返していたのが、ようやく自分のものとして腑に落ちた。
-
-### `effort=high` と `effort=low` を並べて投げる、をデバッグ手段にする
-
-同じチケットを `high` と `low` で実行し、思考トレースを横に並べると、Claude が **何を見て何を判断したか** が驚くほど読める。`high` でしか拾えない仮説があるなら、その種のチケットだけ `high` にルーティングすればよい。これは triage の本番設計だけでなく、エージェント開発中の **デバッグツール** としても優秀だと感じた。
+**`effort=high` と `effort=low` を並べて投げる、をデバッグ手段にする。** 同じチケットを両方の effort で実行し、思考トレースを横に並べると、Claude が何を見て何を判断したかが読める。`high` でしか拾えない仮説があるなら、その種のチケットだけ `high` にルーティングする ── というのは triage の本番設計だけでなく、エージェント開発中のデバッグツールとしても優秀だった。
 
 ## もっと深掘りする入口
 
@@ -347,18 +302,12 @@ Skills のパートは質疑が最も活発で、現場で運用している人�
 - [Extended / Adaptive Thinking](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)
 - [Structured Outputs (JSON Schema)](https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs)
 - [Streaming Messages](https://docs.anthropic.com/en/docs/build-with-claude/streaming)
-- [Model Context Protocol — 仕様サイト](https://modelcontextprotocol.io/)
-- [Claude Skills のドキュメント](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/overview)
 - [Claude API Documentation](https://docs.anthropic.com/en/docs)
 
 ## 章末 — シングルエージェントの足場を踏み固めること
 
-第1章で受け取った takeaway のひとつに、「マルチエージェント評価は未解決問題である」というものがあった。Anthropic 自身も orchestrator-subagent の振る舞いをどう測るかについて、まだ決定版を持っていない。
+第 1 章で受け取った takeaway のひとつに「マルチエージェント評価は未解決問題である」というものがあった。その未解決領域に踏み込む前に、**シングルエージェントを自分の手で組める** という足場が要る。ループの輪郭、thinking の連続性、format のスコープ、`effort` のコスト感 ── これらの肌触りを知らないままマルチエージェントへ進むと、起きている問題がモデルなのかループなのかツール設計なのか、永遠に切り分けられない。
 
-その未解決領域に踏み込む前に、**シングルエージェントを自分の手で組める** という足場が要る、というのがこの章を通じて私が腹落ちしたことだ。ループの輪郭、thinking の連続性、format のスコープ、`effort` のコスト感。これらの肌触りを知らないままマルチエージェントに進むと、起きている問題がモデルの問題なのか、ループの問題なのか、ツール設計の問題なのか、永遠に切り分けられない。
+次章ではこの足場の上に、**プロンプト自体を評価駆動で直していく** という工学的プロセスを乗せる。
 
-フレームワークは便利だ。けれど、いちど **フレームワーク無しでループを書く** という経験を通っておくと、後でどんな抽象を被せても、その下で何が起きているかが見えるようになる。冒頭で見た 5 つの足場のうち API と MCP は下層、Skills は知識層、Plugins はそれらを束ねる入れ物 ── という **層の自覚** を持って Messages API のループを眺めると、どの問題をどの層で解くべきかの判断がぐっと早くなる。
-
-次章ではこの足場の上に、**プロンプト自体を評価駆動で直していく** という工学的プロセスを乗せる。`/04-prompt-rescue` に進もう。
-
-→ [第4章 Prompt Rescue — 評価駆動でプロンプトを直す](./04-prompt-rescue)
+→ 次章: [04-prompt-rescue](./04-prompt-rescue.md)

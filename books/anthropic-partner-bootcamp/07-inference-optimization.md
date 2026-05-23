@@ -8,21 +8,17 @@ free: true
 
 ## はじめに — p99 で語るということ
 
-SF 滞在 2 日目、午後の Inference Optimization のセッション。スピーカーがホワイトボードに線を一本引いて、こう言った。「平均レイテンシで SLA を語るのはやめてくれ。あなたのクライアントは平均では生きていない」。
+SLA を平均レイテンシで語ることは、クライアントが体験する遅さを覆い隠す。レストランの比喩がわかりやすい。半分の客には 5 分で料理が出てきて、もう半分には 25 分かかる店を「平均 15 分の店」と紹介されても、納得する客はいない。評判を決めるのは運悪く 25 分待たされた側の声であり、SLA 議論でも同じ構造が起きる。
 
-そのとき初めて、自分が今まで「平均で速い」を「速い」と言い換えていたことに気づいた。ダッシュボードに並んでいた `avg(latency)` の数字を、何の疑問もなく週次報告に貼って、緑色のままにしていた。
-
-レストランの比喩が出てきたのはその直後だった。半分の客には 5 分で料理が出てきて、半分の客には 25 分かかる店。平均は 15 分。これを「平均 15 分の店です」と紹介されて納得する客はいない。実際に評判を決めるのは、運悪く 25 分待たされた側の声だ。
-
-p99 で語る。これがこの章で持ち帰った最大の言葉になった。あとの話はすべて、その一言の補強材料だったように思う。
+本章で扱う 4 指標と Prompt Caching の損益分岐は、その「運の悪い側」を数字で握り直すための道具立てだ。`mean()` ではなく p95 / p99 を、`tokens / TTC` ではなく `tokens / (TTC - TTFT)` を、そして「速い／安い」ではなく「どの確率でどの遅さでいくらか」を語れるようにする。
 
 ---
 
 ## 題材 — 5 ステージと 4 指標
 
-ハンズオンの題材は、Anthropic API への単発呼び出しから始めて、最終的にプロンプトキャッシング付きのマルチターン会話までを Notebook 上で計測する `Inference_Optimization.ipynb`。動かしながら何度も Cell を再実行し、数字が変わる様子を眺めるタイプの章だった。
+ハンズオンの題材は `Inference_Optimization.ipynb`。単発呼び出しから始めて、モデル比較、Tool use ラウンドトリップ、Prompt caching の単発／マルチターン、最後に Bedrock / Strands 統合までを Notebook 上で計測する。
 
-LLM のレスポンスは、ユーザの目には 1 本のストリームに見える。だが内部では明確に 5 つのステージに分かれている。
+LLM のレスポンスはユーザの目には 1 本のストリームに見えるが、内部では 5 つのステージに分かれている。
 
 ```
 [1] Prompt 送信
@@ -32,27 +28,19 @@ LLM のレスポンスは、ユーザの目には 1 本のストリームに見�
 [3] Tokenization
    ↓
 [4] Inference (prefill → decode)
-   ↓ (ここで最初のトークンが出る = TTFT)
+   ↓ (prefill が終わって最初のトークンが出る = TTFT)
 [5] Streaming Response
    ↓ (最後のトークン到達 = TTC)
 ```
 
-そして、観測すべき指標は次の 4 つ。
+観測すべき指標は次の 4 つ。
 
 - **TTFT** (Time To First Token): 最初のトークンが返るまで。Consumer 体感を決める。
 - **TTC** (Time To Completion): すべての出力が揃うまで。Builder のスループットと SLA を決める。
-- **OTPS** (Output Tokens Per Second): `output_tokens / (TTC - TTFT)`。生成フェーズだけの純粋な速度。
-- **Cost**: 入出力トークン数 × モデル単価。請求書に直結する数字。
+- **OTPS** (Output Tokens Per Second): `output_tokens / (TTC − TTFT)`。**分母は TTC ではない**。TTC で割ると prefill 待ちが混ざる。
+- **Cost**: 入出力トークン数 × モデル単価。請求書に直結する。
 
-ここで OTPS の式が `output_tokens / TTC` ではなく `output_tokens / (TTC - TTFT)` であることを、講師がしつこいくらい強調した。TTC で割ると prefill 待ち（waiting）が混ざるので「実効スループット」になる。decode の本当の速さを見たいなら、最初の 1 トークンが出てからの時間で割らないといけない。これは知らなかった。
-
----
-
-## 何を学んだか — 数字の輪郭が変わっていく
-
-### 同じプロンプトでも、モデル選択で景色は一変する
-
-最初の比較実験で、同じ `"What is machine learning? Answer in 2 sentences."` を Haiku / Sonnet / Opus にそれぞれ 5 回ずつ流した。
+同一プロンプト `"What is machine learning? Answer in 2 sentences."` を Haiku / Sonnet / Opus に 5 回ずつ流したベンチマーク結果は以下のとおり。
 
 | Model  | Runs | TTFT (ms) | TTC (ms) | OTPS  | $/1K calls |
 |--------|------|-----------|----------|-------|------------|
@@ -60,61 +48,153 @@ LLM のレスポンスは、ユーザの目には 1 本のストリームに見�
 | sonnet | 5    | 1504      | 2297     | 65.2  | $4.0800    |
 | opus   | 5    | 800       | 1379     | 87.1  | $20.1000   |
 
-数字の意味を読み解く時間、しばらく無言になった。コストは Haiku から Opus へ約 60 倍。TTFT は Haiku が圧倒的に速く、しかし Opus は Sonnet よりも速いという逆転すらある。「賢いから Opus」「安いから Haiku」と短絡的に選んでいた自分の判断軸は、この一枚の表で揺らいだ。
+コストは Haiku → Opus で約 60 倍。TTFT は Haiku が最速、Opus が Sonnet より速いという順序の逆転も出ている。これらは Anthropic 直 API に加え、AWS Bedrock 経由・Strands Agents SDK 経由でも同じ 4 指標を測れる。
 
-### p99 を見る、ということ
+---
 
-セッションの後半、講師が「全試行の生データを残せ」「`mean()` だけで判断するな」と何度も言った。
+## ベストプラクティス・アンチパターン・重要ポイント
 
-ベンチマークの結果を 1 行に圧縮するのは楽だ。でもそれをやった瞬間、`p95`, `p99` を後から見る権利を捨てている。Notebook の `BenchmarkResult` データクラスはまさにこの設計で、すべての試行を個別に保持して、後から分位点を出せるようになっていた。実装の段取りそのものが「p99 で語るための準備」になっている。
+### クライアントには平均ではなく p99 を語る
 
-### Prompt Caching の経済モデル — 倍率で覚える
+**原則**: SLA は分布で語る。`mean()` は分散とテールを覆い隠す指標であり、本番でのユーザ体験は p95 / p99 が支配する。
 
-価格を絶対額で覚えると、モデルが変わるたびに頭がリセットされる。倍率で覚えるとずっと楽だ、というのも気づきだった。
+**アンチパターン**: ベンチマーク結果を集計値 1 行に圧縮して保存する。これをやった瞬間、後から分位点を取り出す権利を失う。
 
-| 操作 | 単価 | ベース倍率 |
-|---|---|---|
-| 通常入力 | $3.00 | 1.0× |
-| キャッシュ書込（5min TTL） | $3.75 | 1.25× |
-| キャッシュ書込（1h TTL） | $6.00 | 2.0× |
-| キャッシュ読出 | $0.30 | 0.1× |
-| 出力 | $15.00 | (変動なし) |
+**具体例**: Notebook の `BenchmarkResult` データクラスは全試行を個別に保持し、後段の `summary()` で `mean` を出す構造になっている。実装段取りそのものが p99 を取り出すための準備として組まれている。「平均 15 分の店」のレストラン比喩は、p50 と p99 の差を意識するためのデフォルト言語として持っておく。
 
-損益分岐の計算もシンプル。
+### TTFT / TTC / OTPS / Cost の 4 指標を粒度を分けて測る
 
-- **5min cache**: 1 回書いて 2 回読めば、1.25× + 0.1×2 = 1.45× < 普通に 2 回叩く 2.0×。→ **2 回目の読み出しで元が取れる**。
-- **1h cache**: 1 回書いて 3 回読めば、2.0× + 0.1×3 = 2.3× < 3.0×。→ **3 回読めば明確に得**。
+**原則**: TTFT は Consumer 体感、TTC は Builder の SLA、OTPS は生成フェーズだけの純粋速度、Cost は請求書を決める。役割が違うので 1 つに丸めない。
 
-「同じプレフィックスを 2 回以上叩く見込みがあるなら、5min cache は基本入れ得」。これがその場で取った最短のメモになった。
+**アンチパターン**: OTPS を `output_tokens / TTC` で計算する。これは「実効スループット」になってしまい、prefill 待ち（waiting）が混ざる。decode の本当の速さを見るなら、最初の 1 トークンが出てからの時間で割る必要がある。
 
-### Tool use のラウンドトリップが TTFT を倍にする
+**具体例**:
 
-Calculator tool を呼ばせる版と呼ばせない版を比較した結果。
+```python
+def compute_otps(ttft, total_time, output_tokens):
+    gen_time = total_time - ttft  # ← 分母は TTC ではなく TTC − TTFT
+    return (output_tokens / gen_time) if gen_time > 0 else 0
+```
+
+### モデル選択は単純な性能比較ではない
+
+**原則**: 「賢いから Opus」「安いから Haiku」という選び方では SLA を満たせない。プロンプトとユースケースごとに 4 指標を実測し、コストと TTFT / TTC のトレードオフを設計する。
+
+**アンチパターン**: ベンチマーク数値を見ずに「Opus は Sonnet より遅い」「Haiku が最速」と一般化する。実際には上記の表のように、TTFT で Opus が Sonnet より速いケースが起きる。
+
+**具体例**: 大量バッチでコスト最優先なら Haiku、長い推論で品質最優先なら Opus、汎用なら Sonnet をデフォルトに置きつつ、`Inference_Optimization.ipynb` の Part 2 と同じ形で eval を回して自プロジェクトの分布を確認する。
+
+### 時間計測は `time.perf_counter()` を使う
+
+**原則**: ミリ秒単位のレイテンシ計測には単調時計（monotonic clock）を使う。
+
+**アンチパターン**: `time.time()` を使う。これは壁時計で NTP 同期によるジャンプ（巻き戻し含む）があり得るため、レイテンシ計測には不向き。
+
+**具体例**: Notebook の `_stream_request` も `start_time = time.perf_counter()` で始まり、TTFT は `content_block_start` イベント到達時点との差で算出している。
+
+### Tool use は round-trip コストである
+
+**原則**: ツール呼び出しは「Request → tool_use → ローカル実行 → result → 2 回目の Request → Response」という往復構造を持つ。TTFT も TTC もモデル単体の時間に往復分が加算される。
+
+**アンチパターン**: エージェントの「なんとなく遅い」を、モデル選択や max_tokens で解決しようとする。実際の支配項はツール呼び出し回数。
+
+**具体例**: Calculator tool を使う／使わない比較で、TTFT は `1437ms → 2339ms` と約 +900ms 増えた。
 
 | 条件 | TTFT (avg) | TTC (avg) |
 |---|---|---|
 | Without tool | 1437ms | 3250ms |
 | With tool    | 2339ms | 3910ms |
 
-TTFT がほぼ +900ms。原因は明白で、1 回目の呼び出しで `tool_use` ブロックを受け取り、ローカルで実行して、結果を持って 2 回目を呼ぶ往復が入るから。エージェントを触っていて「なんか遅い」と感じる原因の大半はここだ、と腹落ちした瞬間だった。ツールを増やすほどラウンドトリップが膨らむ。これも数字で確認できると、設計の議論で説得力が違う。
+ツールを増やすほどラウンドトリップが線形に積み上がるため、エージェント設計では「ツール数 × 平均呼び出し回数」をレイテンシ予算に含める。
 
-### Opus 4.7 のトークナイザ変更 — eval を回す判断
+### Prompt caching は「同じ prefix を 2 回以上」のとき効く
 
-Opus 4.7 では新しいトークナイザが入っている。同じテキストでも最大 30% 程度トークン数が増えるケースがあると聞いた。
+**原則**: 入力単価を 1.0× とした倍率で覚える。
 
-これは「単価が下がったから移行」という短絡的な判断を許さない数字だった。プロンプトによっては、単価減少分をトークン増加が食いつぶす。判断するには、自分のプロンプトで eval を回すしかない。`usage.input_tokens` / `usage.output_tokens` の合計を、モデルごとに並べて比較する。一手間だが、これをやらないと議論のスタートラインに立てない。
+| 操作 | 単価 (Sonnet 4.5) | ベース倍率 |
+|---|---|---|
+| 通常入力 | $3.00 / 1M | 1.0× |
+| キャッシュ書込（5min TTL） | $3.75 / 1M | 1.25× |
+| キャッシュ書込（1h TTL） | $6.00 / 1M | 2.0× |
+| キャッシュ読出 | $0.30 / 1M | 0.1× |
+| 出力 | $15.00 / 1M | (変動なし) |
 
----
+損益分岐:
 
-## 前提が崩れた瞬間
+- **5min cache**: 1.25× + 0.1× × 2 = 1.45× < 2.0×。**2 回目の読み出しで黒字**。
+- **1h cache**: 2.0× + 0.1× × 3 = 2.3× < 3.0×。**3 回目の読み出しで黒字**。
 
-セッションの中で、自分の中の前提が静かに崩れた瞬間がいくつかあった。
+**アンチパターン**: 1 回しか叩かないプロンプトに `cache_control` を付ける。1.25× を払うだけで読み出しに到達しないため、純粋に損。
 
-**「1M context があるからキャッシュは要らない」と思っていた**。これは間違いだった。1M 入るのと、1M を毎回 prefill するのは別の話だ。同じプレフィックスを 2 回以上叩く想定があるなら、context window の広さに関係なく入れ得。むしろ、長いほど効く。
+**具体例**: 同じシステムプロンプト・同じツール定義で 2 回以上呼ぶ見込みがあるなら、5min cache は基本入れ得。マルチターン会話の system + 履歴、エージェントの system + tools 定義は典型的な caching 対象。
 
-**「タイムスタンプを system prompt に入れていた」**。何の気なしに `f"Current time: {datetime.now()}..."` と書いていたが、これは毎リクエスト 1 文字違うので、永遠に cache miss する。動的な値はプレフィックス側に置いてはいけない。動的部分は user message の末尾に寄せる。これは即座に修正項目になった。
+### caching を壊す典型ミス
 
-**「1024 トークン未満の `cache_control` にも意味がある」と思っていた**。Sonnet / Opus は 1,024 トークン以上、Haiku は 4,096 トークン以上のブロックでないとキャッシュされない。これ未満で `cache_control` を付けても、エラーにはならず黙って無視される。`usage.cache_creation_input_tokens` が 0 のまま「効いているはず」と信じ続けることになる。これは事故ったら気づきにくい。
+**原則**: caching は厳密な前方一致。プレフィックスに動的値を 1 文字でも混入させると、全リクエストが cache miss する。
+
+**アンチパターン**:
+
+1. **タイムスタンプ混入**: `f"Current time: {datetime.now()}..."` を system prompt に書く。毎リクエスト 1 文字以上違うため、永遠に miss する。
+2. **最低トークン未満**: Sonnet / Opus は 1,024 トークン以上、Haiku は 4,096 トークン以上のブロックでないとキャッシュされない。未満で `cache_control` を付けても **エラーは出ず黙って無視される**（silent ignore）。
+3. **複数 breakpoint の放置**: マルチターンで古いターンの `cache_control` を残したまま新しいターンにも付ける。breakpoint は積み上げるのではなく、最新だけに移動する。
+
+**具体例**: 動的な値（時刻・ユーザ ID・乱数）は user message の末尾に寄せる。system / tools / 履歴は静的に保つ。
+
+### caching の効きを `usage` で検証する
+
+**原則**: caching は「効いているはず」で済ませない。レスポンスの `usage` フィールドを必ず観測する。
+
+| フィールド | 意味 |
+|---|---|
+| `usage.cache_creation_input_tokens` | 書き込んだトークン数（初回 > 0） |
+| `usage.cache_read_input_tokens` | 読み出したトークン数（2 回目以降 > 0） |
+| `usage.input_tokens` | キャッシュ対象外の純粋な入力トークン |
+
+**アンチパターン**: ログに `usage` を残さない。誰かが system prompt にタイムスタンプを追加した瞬間に気づけず、請求額が静かに数倍化する。
+
+**具体例**: CI で「同一プロンプトを 2 回叩いて 2 回目の `cache_read_input_tokens > 0` をアサート」するテストを置く。これだけで構造の崩れが即座に検知できる。
+
+### Bedrock 統合は差分を把握する
+
+**原則**: AWS Bedrock 経由でも `cache_control` のペイロード構造は同じ。ただし `usage` のフィールド名と TTL サポート範囲に差分がある。
+
+| 項目 | Anthropic 直 API | AWS Bedrock |
+|---|---|---|
+| クライアント | `anthropic.Anthropic(api_key=...)` | `anthropic.AnthropicBedrock(aws_region=...)` |
+| モデル ID | `claude-sonnet-4-5-20250929` | `anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| `usage` フィールド | snake_case (`cache_read_input_tokens`) | camelCase (`cacheReadInputTokens`) |
+| 1h TTL | Claude 4.5+ で対応 | Bedrock かつ Claude 4.5+ のみ |
+| スコープ | 組織（API キー）単位 | アカウント + リージョン + モデル ID 単位 |
+
+**アンチパターン**: ログ集約・ダッシュボードを snake_case 前提で組む。Bedrock 経由のリクエストでフィールドが拾えず、命中率が見えなくなる。
+
+**具体例**: ログ層で両方のキーを正規化するか、両方を出力する設計にする。
+
+### Strands Agents SDK の cache 自動配置
+
+**原則**: Strands Agents SDK（Bedrock）では `CacheConfig(strategy="auto")` を使うと、SDK が system / tools / 履歴の cache point を自動配置する。手書きの `cache_control` は不要。
+
+**アンチパターン**: 旧 API の `cache_tools="default"` を使い続ける。これは deprecation 方向（GitHub Issue #1577）。新規実装で採用すると将来の移行コストを抱える。
+
+**具体例**:
+
+```python
+from strands.models.bedrock import CacheConfig
+
+model = BedrockModel(
+    model_id="anthropic.claude-sonnet-4-5-20250929-v1:0",
+    region_name="us-west-2",
+    cache_config=CacheConfig(strategy="auto"),
+)
+```
+
+### Tokenizer 変更は cost-neutral ではない
+
+**原則**: Opus 4.7 では新しいトークナイザが入っており、同じテキストでも最大 +30% 程度トークン数が増えるケースがある。単価が下がっても、トークン数増がそれを食いつぶす可能性がある。
+
+**アンチパターン**: 「新モデルは単価が下がったから自動的に安い」と判断して移行する。1M context が入るからキャッシュは要らない、と判断する。1M 入ることと、1M を毎回 prefill することは別の話。長い prefix を持つほど、caching の旨味は増す。
+
+**具体例**: モデル更新前後で `usage.input_tokens` / `usage.output_tokens` の合計を自プロンプトで並べて比較する。コスト × トークン数の積で初めて移行判断ができる。
 
 ---
 
@@ -122,7 +202,7 @@ Opus 4.7 では新しいトークナイザが入っている。同じテキス�
 
 ### Streaming で TTFT を計測する
 
-`client.messages.create()` は最終応答が揃ってから返るので TTFT が測れない。必ず `client.messages.stream()` を使い、`content_block_start` イベントが立った瞬間を TTFT として記録する。
+`client.messages.create()` は最終応答が揃ってから返るため、TTFT が測れない。必ず `client.messages.stream()` を使い、`content_block_start` イベントが立った瞬間を TTFT として記録する。
 
 ```python
 import time
@@ -157,11 +237,9 @@ def compute_otps(ttft, total_time, output_tokens):
     return (output_tokens / gen_time) if gen_time > 0 else 0
 ```
 
-`time.perf_counter()` を使っているのも意図がある。`time.time()` は壁時計で NTP 同期によるジャンプがあり得るので、ミリ秒単位のレイテンシ計測には向かない。
-
 ### `cache_control` を system block に打つ
 
-system prompt は通常 string で渡すが、キャッシュを使う場合は content block の list に変える必要がある。そして、効いていることを `usage` で確認するところまでがセット。
+system prompt は通常 string で渡すが、キャッシュを使う場合は content block の list に変える。1,024 トークン以上であること、効いていることを `usage` で確認するところまでがセット。
 
 ```python
 SYSTEM_PROMPT = LONG_INSTRUCTIONS  # 1,024 トークン以上であること
@@ -190,11 +268,11 @@ print(f"input_tokens (uncached):     {response.usage.input_tokens}")
 - **初回**: `cache_creation_input_tokens > 0`, `cache_read_input_tokens == 0`
 - **2 回目以降（5min 以内）**: `cache_creation_input_tokens == 0`, `cache_read_input_tokens > 0`
 
-2 回目以降で `cache_read_input_tokens` が 0 のままなら、プレフィックスのどこかが揺れているか、最低トークン数に届いていないか、のどちらか。
+2 回目以降で `cache_read_input_tokens` が 0 のままなら、プレフィックスのどこかが揺れているか、最低トークン数に届いていないか、のいずれか。
 
 ### マルチターン会話での breakpoint 切替
 
-マルチターンでキャッシュを効かせるコツは、**直前の assistant ターンだけに `cache_control` を残し、それより古いターンの cache_control は平文に戻す**こと。breakpoint は積み上げない、最新だけに移す、という運用。
+マルチターンでキャッシュを効かせるコツは、**直前の assistant ターンだけに `cache_control` を残し、それより古いターンの cache_control は平文に戻す**こと。breakpoint は積み上げず、最新だけに移す。
 
 ```python
 SYSTEM = [
@@ -237,7 +315,7 @@ def chat(messages, new_question):
     return answer, response.usage
 ```
 
-実測（5 ターン会話）では、ターンが進むごとに `cache_read` が積み上がっていく様子が、数字としてきれいに見える。
+実測（5 ターン会話）では、ターンが進むごとに `cache_read` が積み上がっていく。
 
 ```
 Turn 1: 4927ms | cached: 0    | created: 1241   ← Cold (system prompt 書込)
@@ -247,19 +325,9 @@ Turn 4: 4615ms | cached: 1874 | created: 316
 Turn 5: 6498ms | cached: 2190 | created: 316
 ```
 
-新しい質問が来るたびに、過去の会話履歴全体を 0.1× の単価で再処理できる。ターン数が増えてもコストが線形に伸びない。これが見えると、マルチターンエージェントの設計判断が変わる。
+### Bedrock 経由のクライアント生成
 
----
-
-## 現場に持ち帰りたいこと
-
-セッションを終えて、明日からの仕事で変えるべきことが 3 つ整理できた。
-
-**1. SLA 議論の場で「平均」と言わない**。p95 / p99 で語る。`mean()` だけ書いてあるダッシュボードは、まず分布が取れる形に作り直す。Notebook で `BenchmarkResult` を全試行残していたあの設計を、本番の計測にも持ち込む。
-
-**2. キャッシュ検証は `usage.cache_creation_input_tokens` / `usage.cache_read_input_tokens` で必ず観測する**。「効いてるはず」で済ませない。CI で同一プロンプトを 2 回叩いて、2 回目の `cache_read_input_tokens > 0` をアサートするテストを入れておけば、誰かが system prompt にタイムスタンプを足した瞬間に気づける。気づけないと請求額が静かに 4 倍になる。
-
-**3. AWS Bedrock / Strands SDK との互換性**。`cache_control` の構造は Bedrock 経由でも同じで、Strands なら `CacheConfig(strategy="auto")` で SDK 任せにできる。Bedrock 経由では `usage` のフィールド名が `cacheWriteInputTokens` / `cacheReadInputTokens` のキャメルケースになるので、ログ出力やダッシュボードは両方に対応させておく。
+クライアント生成とモデル ID を差し替えるだけで、ペイロード形状は同じ。1h TTL は Bedrock + Claude 4.5+ で利用可能。
 
 ```python
 # Bedrock 経由（Anthropic SDK）
@@ -275,9 +343,7 @@ response = client.messages.create(
     }],
     messages=[{"role": "user", "content": question}],
 )
-```
 
-```python
 # Strands Agents SDK（Bedrock）
 from strands import Agent
 from strands.models import BedrockModel
@@ -296,7 +362,33 @@ agent = Agent(
 )
 ```
 
-Strands の旧 API `cache_tools="default"` は deprecation 方向（Issue #1577）。新規実装は `cache_config` を使う。
+---
+
+## 気づきと前提が崩れた瞬間
+
+「平均で速い」を「速い」と言い換えていたことに、講師の「あなたのクライアントは平均では生きていない」の一言で気づかされた。ダッシュボードに並んでいた `avg(latency)` を、何の疑問もなく週次報告に貼って緑色のままにしていた自分の手癖が露呈した感覚だった。
+
+数字の輪郭が変わった瞬間が 3 つある。
+
+**1 つ目は OTPS の式**。`output_tokens / TTC` で書いていたが、講師がしつこく `output_tokens / (TTC − TTFT)` を強調するのを聞いて、`TTC` で割っていた以前のダッシュボードが「実効スループット」と「decode 速度」を取り違えていたことに気づいた。同じ指標名で違う意味を測っていた、というのは事故の温床だ。
+
+**2 つ目は「1M context があるからキャッシュは要らない」という思い込み**。1M 入ることと 1M を毎回 prefill することは別の話、と言われた瞬間に立場が逆転した。長い prefix を持つほど caching の旨味は増す、という方が正しい。
+
+**3 つ目はタイムスタンプ問題**。何の気なしに `f"Current time: {datetime.now()}..."` を system prompt に入れていた既存コードが、永遠に cache miss していた可能性に気づいた。これはセッション中に手元の本番コードを思い浮かべて青ざめた箇所だった。即座に修正項目に追加した。
+
+それと、`cache_control` を 1,024 トークン未満のブロックに付けても **エラーが出ずに黙って無視される** という挙動も予想外だった。「効いているはず」と信じ続けて `cache_creation_input_tokens` が 0 のままなのに気づかない、という事故の絵が見えた。
+
+---
+
+## 現場に持ち帰りたいこと
+
+セッションを終えて、明日からの仕事で変えるべきことが 3 つ整理できた。
+
+**1. SLA 議論の場で「平均」と言わない**。p95 / p99 で語る。`mean()` だけ書いてあるダッシュボードは、まず分布が取れる形に作り直す。Notebook の `BenchmarkResult` のように全試行を残す設計を本番計測にも持ち込む。
+
+**2. キャッシュ検証は `usage` で必ず観測する**。「効いてるはず」で済ませない。CI で同一プロンプトを 2 回叩いて 2 回目の `cache_read_input_tokens > 0` をアサートするテストを入れておく。誰かが system prompt にタイムスタンプを足した瞬間に気づける。
+
+**3. Bedrock / Strands の差分にログ層で対応する**。Strands なら `CacheConfig(strategy="auto")` で SDK 任せにでき、旧 API の `cache_tools="default"` は使わない（Issue #1577）。Bedrock 経由では `usage` のフィールド名が camelCase になるため、ログ集約とダッシュボードは両方に対応させる。
 
 ---
 
@@ -310,7 +402,7 @@ Strands の旧 API `cache_tools="default"` は deprecation 方向（Issue #1577�
 - **Message Batches API**: https://docs.anthropic.com/en/docs/build-with-claude/batch-processing — オフライン処理 50% 引き
 - **AWS Bedrock prompt caching**: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
 - **Strands Agents SDK**: https://strandsagents.com/
-- **OpenTelemetry GenAI semantic conventions**: https://opentelemetry.io/docs/specs/semconv/gen-ai/ — TTFT / TTC を分散トレースに乗せたい場合の標準
+- **OpenTelemetry GenAI semantic conventions**: https://opentelemetry.io/docs/specs/semconv/gen-ai/ — TTFT / TTC を分散トレースに乗せるための標準
 
 ---
 
@@ -324,4 +416,4 @@ Strands の旧 API `cache_tools="default"` は deprecation 方向（Issue #1577�
 
 次章では、推論最適化と表裏一体の **Context Engineering** に踏み込む。速く・安く回せるようになった土台の上に、どのような情報を・どの順序で・どの形式で渡せばモデルが間違えないか。`Context Engineering` の Notebook を通して、`day2/03_context-engineering/` の体験を整理する。
 
-→ [08-context-engineering](./08-context-engineering)
+→ 次章: [08-context-engineering](./08-context-engineering.md)

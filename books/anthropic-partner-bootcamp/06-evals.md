@@ -1,161 +1,135 @@
 ---
-title: "Eval 駆動の品質保証 — Code / Model / Human の3層grader設計"
+title: "Eval 駆動の品質保証 — 5要素パイプラインと3層grader、3層責務モデル"
 free: true
 ---
 
 > ハンズオン公式リポジトリ: https://github.com/victorsteeb/Basecamp-Exercises.git
-> 該当ディレクトリ: `day2/01_evals/`
-> 題材: `boutique` — 商品検索 (`get_product`) と計算 (`calculate`) の2ツールを持つシングルターン shopping assistant
+> 該当ディレクトリ: `day2/01_evals/Building_an_Eval.ipynb`
+> 題材: `boutique` — `get_product` と `calculate` の2ツールを持つシングルターン shopping assistant
 
-## はじめに — SF 2日目、最初に渡された問い
+## はじめに — 「動いた」を「測れる」に変える
 
-2日目の朝、会場に着いたときの空気は前日とは少し違っていた。1日目が「Claude Code を触って驚く」日だったのに対し、2日目の最初のセッションは「触って驚いた後、どうやって品質を保証するのか」という、もっと地に足のついた問いから始まった。
-
-スピーカーが冒頭で投げかけたのは、「あなたのエージェントが『動いている』ことを、あなたはどうやって証明しますか?」という一文だった。動いている、の根拠を聞かれてとっさに浮かぶのは、デモで一度うまくいった画面、社内 Slack に貼った成功例、PM が頷いてくれた顔――どれも vibes である。Eval というセッションは、その vibes を「測れる規律」に変えるための地図を渡してくれる時間だった。
-
-第1章で挙げた takeaway の中で、Bootcamp 全体を通して最も強く残ったのが「マルチエージェント評価は、ほとんどのチームで未解決のまま」という指摘だった。この章は、その未解決をどう手当てしていくかの最初の一歩である。
+Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触って驚く」モードから一気にシフトして、「そのエージェントが品質的に動いていることをどう証明するか」という問いから始まった。デモで一度通った例、社内 Slack の成功スクショ、PM が頷いた顔――そういった vibes を、データで語れる規律に置き換えるための地図を渡されるのがこの章のテーマである。本章では eval を 5 要素パイプラインに分解し、3 層 grader と 3 層責務モデルという 2 つの軸で boutique chatbot を鍛える流れを追っていく。
 
 ## 題材 — `boutique` chatbot を 5 ステップで鍛える
 
-ハンズオンの題材は `boutique` という小さな shopping assistant だった。商品検索 (`get_product`) と計算 (`calculate`) の 2 ツールだけを持つシングルターンのエージェントで、コードはあえて小さくしてある。5 つのステップで eval suite を組み立てていく。
+題材はあえて小さく作られた `boutique` というシングルターンの shopping assistant である。tools は 2 つだけで、`get_product(product)` が商品名から価格を引き、`calculate(op, input1, input2)` が四則演算を担う。ループは `User query → Claude decides → Tool call → Tool result → ... → Final answer` のシンプルな単一ターン構成。
 
-1. **エージェントとの対面** — 何が動いて何が壊れているか手で確かめる
+ハンズオンはこの題材を題目に、Eval suite を 5 ステップで組み立てる構成になっている。
+
+1. **エージェントとの対面** — 現状の挙動と壊れている箇所を手で確かめる
 2. **タスク定義** — 能力カテゴリとエッジケースを cover するシナリオを書く
-3. **ハーネス実行** — tasks → runner → graders → results のパイプラインで採点
-4. **エージェント改善** — システムプロンプト / ツール記述 / ツール実装を直し再計測
-5. **LLM-as-Judge の追加** — 文字列マッチでは採点できないオープンエンドな応答を採点する
+3. **ハーネス実行** — `Tasks → Runner → Graders → Results` のパイプラインで採点
+4. **エージェント改善** — system prompt / tool description / tool 実装を直し再計測
+5. **LLM-as-Judge の追加** — 文字列マッチで採点できないオープンエンドな応答を採点する
 
-題材は小さいが、得たいのはコードではなく「どのレイヤーで何を直すべきか」「採点器をどう選ぶか」という意思決定の型である。終わってみると、この型はそのままチームに持ち帰れる、汎用の道具になっていた。
+題材は小さいが、得たいのはコードではなく「どのレイヤーで何を直すべきか」「採点器をどう選ぶか」という意思決定の型である。Day 2 SF 開幕として、その型を一気通貫で渡すための題材として位置づけられている。
 
-## 何を学んだか — Eval の5要素と3層grader、そして3層責務モデル
+## ベストプラクティス・アンチパターン・重要ポイント
 
-最初に渡されたのは、eval の最小構成を 5 要素に分解する見方だった。**Input / Model / Output / Grader / Score**。これだけで eval は語れる、というシンプルさが心地よかった。
+### Eval は Input/Model/Output/Grader/Score の5要素に分解する
 
-そして grader を語る順序がはっきりしていた。**Code grader → Model grader (LLM-as-Judge) → Human grader** の3層を、無料で速く確実な順に検討する。最初から LLM-as-Judge に手を出すのは過剰投資になりがちで、判定基準を投げて即決まるものは全部 code grader で済ます、という割り切りである。
+**原則**: eval の最小構成は `Input / Model / Output / Grader / Score` の 5 要素で語れる。最初の 3 つはこれまでの推論パイプラインそのものであり、eval が追加するのは「Output を Grader に渡して Score を返す」最後の 2 ステップだけである。この最小単位を維持することで、評価対象がモデルなのか、grader なのか、タスク設計なのかを切り分けやすくなる。
+
+**アンチパターン**: 「何を評価しているか」を明確にしないまま eval スクリプトを書き始めると、grader の責務とタスク設計が混ざり、結果の解釈が不能になる。runner に表示処理を埋め込んだり、grader が複数の独立した観点を 1 関数で採点したりすると、再利用も差し替えも難しくなる。
+
+**具体例**: 公式ハーネスは runner と grader を明示的に分離している。`run_eval()` はデータ構造を返すだけで、`print_summary()` は別関数。grader は `GRADER_REGISTRY` という dict にプラグインされる構造で、新しい grader タイプは「1 関数 + 1 dict エントリ」で追加できる。agent も `agent_fn` 引数で受け取り、mock 差し替えや instrumentation を可能にする。
+
+### 3 層 grader を組み合わせる
+
+**原則**: grader は **Code → Model → Human** の順に検討する。判定基準が明確で決定的に書けるものは全部 code grader で済ませ、open-ended なものだけ LLM-as-Judge に持ち上げ、最終ゲートだけ human にする。実務上の比率の目安は **Code 80% / Model 15% / Human 5%**。
 
 | 層 | 何で検証するか | 得意領域 | コスト | 信頼性 |
 |---|---|---|---|---|
-| **Code grader** | exact match / 正規表現 / 必須キーワード / ツール呼び出し回数 / レイテンシ | フォーマット遵守、価格や数量のような決定可能な値、ツール呼び出しの有無 | 無料 / 即時 | 高（判定基準が明確） |
-| **Model grader (LLM-as-Judge)** | 別の LLM に基準を渡して採点 | トーン、完成度、指示遵守、open-ended 応答 | 有料 / 数百ms | 中（モデルに依存） |
-| **Human grader** | 人間レビュー | 安全性最終承認、ローンチ前ゲート、annotator labeling | 高 / 遅い | 高だがスケールしない |
+| **Code grader** | exact match / regex / 必須キーワード / tool 呼び出し / latency | フォーマット遵守、価格や数量など決定可能な値、tool 呼び出しの有無 | 無料 / 即時 | 高（基準が明確） |
+| **Model grader (LLM-as-Judge)** | 別 LLM に基準を渡して採点 | トーン、完成度、指示遵守、open-ended 応答 | 有料 / 数百ms | 中（モデル依存） |
+| **Human grader** | 人間レビュー | 安全性最終承認、ローンチ前ゲート、Judge 校正サンプル | 高 / 遅い | 高だがスケールしない |
 
-実務での比率は **Code 80% + Model 15% + Human 5%** くらいに落ち着く、というのが講師の経験則として共有された。Human grader を「全件レビュー」と捉えるのではなく「Model grader を信頼してよいかの校正サンプル」として使う、という現実的な運用がいい補助線になった。
+**アンチパターン**: 最初から LLM-as-Judge に全タスクを通すのは過剰投資である。exact match や `response_contains` で決着するタスクに Judge 呼び出しを乗せると、コストが線形に増え、grader 自身の非決定性で eval が flaky になる。逆に Human grader を「全件レビュー」と捉えるのも誤りで、Human はスケールしない。
 
-もうひとつ、`boutique` を改善していくうちに浮かび上がったのが「どこに何を書くべきか」を整理する **3層責務モデル** である。
+**具体例**: 公式ハーネスの code grader は `response_contains`（最終応答に文字列を含むか）、`response_numeric`（数値が許容範囲内か）、`tool_use`（特定の tool を特定の引数で呼んだか）の 3 種。各 grader はバイナリスコア（0/1）と理由を返し、タスクは「全 grader / 全 check の AND」で pass する。Human grader は出荷ゲートと、Model grader を信頼してよいかの校正サンプル（10〜30 件）として運用する。
+
+### Judge モデルは「審判の専門性」で選ぶ
+
+**原則**: LLM-as-Judge のモデル選定は「常に最強モデル」が正解ではない。**評価対象タスクの難易度**で決める。高頻度・反復・パターンマッチで足りる評価には Haiku、文脈推論や open-ended な解釈を要する評価には Sonnet / Opus を充てる。
+
+**アンチパターン**:
+
+- 「念のため Opus にしておく」と全 Judge を最上位モデルにすると、Judge コストが本番推論より高くなる。
+- 逆に難しい評価まで Haiku で済ませると、「チェックボックスは満たすが本来の意図を取り違える」誤判定が増える。
+- Judge モデルを差し替える際に AB テストを取らないと、スコア変動が「エージェントの劣化」なのか「Judge の厳しさ変化」なのか切り分けられない。
+
+**具体例**:
+
+- **Haiku が向くケース**: 応答中の M-dash や `As an AI language model...` のような AI 定型句の検出など、パターンマッチで判定可能な評価。
+- **Sonnet / Opus が向くケース**: 安全性、複雑な政策遵守、open-ended な「適切な応答か」判定など、文脈推論を要する評価。
+- アナロジー: 「最先端物理学の評価には世界トップの物理学者を、高校レベルの問いには高校の物理教師を呼ぶ」――Judge も同じく、難易度で人選を変える。
+- モデル差し替え時は `Haiku Judge / Sonnet Judge` のように AB テストで両方走らせ、human-labeled な校正セットとの相関を取る。
+
+### 3-layer responsibility model: failure を fix location にマップする
+
+**原則**: エージェントの失敗は「どこを直すか」で **モチベーション付け / 文脈付け / 安全網** の 3 層に振り分けられる。失敗パターンをこの層にマップすることで、修正先が決定される。
 
 | 失敗パターン | 効く対策のレイヤー | 直す場所 |
 |---|---|---|
-| ツールを呼ばない | **モチベーション付け** | システムプロンプト（役割宣言 + ツール使用義務）|
-| 引数フォーマットを間違える | **文脈付け** | tool description（許可値・例の列挙）|
-| ツールエラーから回復しない | **安全網** | ツール実装（説明的な戻り値）|
-| 知識不足（「何を売っているか」を知らない）| **文脈付け** | tool description（カタログ情報の同梱）|
+| ツールを呼ばない | モチベーション付け | system prompt（役割宣言 + ツール使用義務）|
+| 引数フォーマットを間違える | 文脈付け | tool description（許可値・例の列挙）|
+| ツールエラーから回復しない | 安全網 | tool 実装（説明的な戻り値）|
+| 知識不足 | 文脈付け | tool description（カタログ等の文脈情報）|
 
-「システムプロンプトはモチベーション付け、tool description は文脈付け、tool 実装は安全網」――この一行にまとめてしまうと当たり前のようだが、`boutique` で実際に直してみるとこの分業がきれいに効いてくる。素の `"You are a helpful assistant."` を「`ALWAYS call get_product to look up a price. Never guess.`」へ変えるだけで、50% → 100% のジャンプの大半が説明できてしまった。最大の伸び代はシステムプロンプトでのツール強制使用宣言である、というのが今回の最大の学びだった。
+**アンチパターン**: system prompt にカタログを列挙する、tool description に役割宣言を書く、tool 実装で `KeyError` を投げるだけで終わる――いずれも層を取り違えた修正であり、エージェントが自己回復できない経路を残す。`empty list` や生の例外をそのまま返すと、エージェントは「ツールが落ちた」以上の情報を得られない。
 
-## Q&A セッションで印象に残った会話 — Judge モデルをどう選ぶか
+**具体例**: `boutique` の `get_product` で未発見時に `KeyError` を投げる代わりに `{"available_products": [...], "hint": "..."}` 相当の「候補一覧を含むエラーメッセージ文字列」を返す設計にすると、エージェントは synonym（`shoes` → `sneakers`）への自己回復ルートを得る。system prompt 側は `"You are a helpful assistant."` から `"ALWAYS call get_product to look up a price. Never guess."` に書き換える。boutique では 50% → 100% への伸びの大半がこの system prompt のツール強制使用宣言で説明される。
 
-セッションの終盤、ある参加者が手を挙げてこう尋ねた。「LLM-as-Judge には結局どのモデルを使うべきですか? Opus が無難でしょうか?」
+### 構築と評価は別人格で書く
 
-講師の答えは即答で、しかも意外なものだった。「常に最強モデルが正解とは限らない。**Judge モデルの選定は、評価対象タスクの難易度で決まる**」。
+**原則**: build を書いた人格が同じく eval も書くと、無意識のうちに「自分が作ったものが通る方向」に grader が寄る。eval は build と切り離した責務として、最初から別の場所・別の人・別の時間で書く。
 
-そのまま続いた説明を、自分なりに整理するとこうなる。
+**アンチパターン**: 同一エンジニアが build と eval を同タイミングで書くと、「直しやすい失敗」だけがテスト化され、ビジネスに致命的なケース（競合商品名を口にする、価格を約束する、off-topic）が漏れる。grader が build の言い訳を内包してしまう状態である。
 
-- **小さいモデルが効くケース（Haiku）** — エージェントが書く文章から M-dash や「As an AI language model...」のような AI らしい決まり文句を検出する、といった「高頻度・反復・パターンマッチで足りる」評価。こういう用途に Opus を投入するのはコストの無駄。
-- **大きいモデルが効くケース（Sonnet / Opus）** — 深く分析的な内容や、評価対象のトピックが幅広く、good/bad の境界を「文脈推論」しないと判断できない評価。安全性や複雑な政策遵守の判定もここに含まれる。
+**具体例**:
 
-このとき講師が使った比喩がよかった。「人間に置き換えて考えてください。最先端の物理学を評価するなら世界トップの物理学者を呼ぶ。しかし高校レベルの問いなら高校の物理教師で十分です。モデル選定も同じで、これは難しい問題か、そうでないか、を一歩引いて見極めるのが先です」。
+- **コードの場所を分ける**: 同一リポジトリでも `agent/` と `evals/` を並列に立てる。
+- **書く人と時間を分ける**: 同一チーム内でも build と eval を別人が書く。同一人物しかいない場合は「build を書いた翌日に eval を書く」だけでも認知バイアスが下がる。
+- **責務オーナーを分ける**: PM / SE を eval 工程に巻き込む。レビュー時の合言葉は「これは PM がそのまま PRD の Acceptance Criteria としてコピペできるか?」。Yes と言えなければ eval としても弱い。
 
-そのうえで小さいモデルの落とし穴にも触れていた。「小さいモデルは『チェックボックスは満たすが、本来の意図を取り違える』ことがある。大きいモデルのほうが『ユーザは表面の言葉ではなく、本当はこれを意図している』を推論する力が強い。だからオープンエンドな判定や、評価基準そのものが解釈を要するときは、迷わず大きいモデルへ寄せていい」。
+### 非決定性は num_runs と分布で扱う
 
-質問は続いて、「では、これからエージェントの eval をゼロから設計するとき、どう始めるべきか?」という問いになった。返ってきた答えがまた腹に落ちた。「**Claude 自身に eval harness を設計させるのが優秀です**。『このエージェントは X / Y / Z をしている。もっと良くするには何を測ればいい?』と問いかけるのが起点になる」。
+**原則**: LLM は temperature 0 でも非決定的に振る舞う。**平均値だけ**で品質を語らない。`num_runs=5` 程度で複数回走らせ、**pass@k**（最低 1 回通った率）と **pass^k**（毎回通った率）を分けて見て、分布（min/max/mean）を必ず観察する。
 
-最後に、モデルを差し替えるときの注意も付け加えられていた。「eval ステップでモデルを差し替えるなら、必ず AB テストとして両方走らせてバッジを 2 つ立てて比較してください。`Haiku Judge / Sonnet Judge` のように並列で残し、人間ラベルとの相関を取る」。
+**アンチパターン**: 「平均 90% だから OK」と判断したまま出荷する。同じ平均 90% でも全タスクが 90% 安定なのと、半数が 100% / 半数が 50% を行き来する flaky とでは、実運用での体感品質が完全に別物になる。
 
-このやり取りは、現場で自分が日常的に困っている問いと地続きだと感じた。マルチエージェントの相互作用評価まで考えると、Judge モデルの選定も実は「マルチレベルで設計する」必要がある――低レイヤーの judge には Haiku、上位の総合判定には Sonnet、安全性ゲートだけ Opus、というように。第1章 takeaway #1 が指していた「未解決のまま」の輪郭が、ここで少し具体的になった気がした。
-
-## 前提が崩れた瞬間
-
-Eval を書けば品質が上がる、と単純に思っていたが、セッションの中で 3 回くらい前提が揺さぶられた。
-
-ひとつ目は **eval ハック** の話だった。例えば「response_contains で `acknowledge` が含まれていれば pass」という grader を書いたとする。すると、システムプロンプト側に「最初に user prompt を丸ごと echo してから回答せよ」と書くだけで、形式上は pass する。eval を欺いただけで品質は上がっていない、というあの例は刺さった。1 タスクに複数の独立した grader を当てる、eval を頻繁に入れ替える、runtime sampling を併用する――対策の方向が一気に増えた。
-
-ふたつ目は **平均だけでなく分布を見る** こと。同じ「平均 92%」でも、全タスクが 92% なのと、半分が 100% で半分が 84% なのとでは、実務的にまったく違う。`num_runs=5` で複数回走らせ、`pass@k`（最低 1 回通った率）と `pass^k`（毎回通った率）を分けて見る、という具体的な指標まで降ろされていた。
+**具体例**:
 
 | 状況 | 解釈 | 対処 |
 |---|---|---|
-| 平均 90%、min 90%、max 90% | 安定して通る | 出荷可 |
-| 平均 90%、min 50%、max 100% | flaky | 失敗時の transcript を見てパターン抽出 |
-| 平均 50% | 体系的に壊れている | プロンプトかツール設計の問題 |
+| 平均 90%、min 89%、max 91% | 安定（stable） | 出荷可 |
+| 平均 90%、min 50%、max 100% | flaky | 失敗時 transcript を読みパターン抽出 |
+| 平均 50% | 体系的に壊れている | プロンプト・ツール設計の問題 |
 
-そして三つ目が、**エンジニア1人で書く eval の限界** だった。eng が自分でコードを書いて、その同じ eng が eval も書くと、「直しやすい失敗」だけがテストになってしまう。ビジネスにとって致命的なケース（競合商品名を口にしてしまう、価格を約束してしまう）は漏れる。eval は PRD のテストであって、PM やドメインエキスパートが「合格条件」を共同所有するものだ、という言葉が印象に残った。レビュー時の合言葉として講師が挙げていたのは「**これは PM がそのまま PRD の Acceptance Criteria としてコピペできるか?**」。Yes と言えなければ、eval としても弱い。
+pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する。flaky と reliably broken を切り分けるための基本指標である。
 
-## 構築と評価は、別人格で書く
+### Mission Control: Sonnet 主体 + Opus advisor
 
-前節の三つ目で触れた「エンジニア1人で書く eval の限界」は、もう一段抽象化すると Bootcamp 全体に通底していたひとつの規律として立ち上がってくる。それが「**構築と評価は別人格で書く**」というものだった。自分が現場に戻ってから真っ先に効くと感じたメッセージなので、独立した節として残しておく。
+**原則**: エージェント階層は「常に Opus」ではなく **Sonnet 主体で走らせ、必要時のみ Opus を呼ぶ** 構成（**Mission Control / Inverted agent hierarchy**）が、コストと精度の両面で優位になりやすい。Opus への escalation 率は 5〜10% に抑えるのが目安。
 
-Eval harness を build と同じ人格で書くと、ほぼ確実に「自分が作ったものを自分で甘く採点する」状態に陥る。assertion の選び方も、境界値の置き方も、無意識のうちに build 側が通しやすい方向に寄ってしまう ── これは熟練度の問題というより、人間の認知の構造的な癖だと講師は言っていた。実際 `boutique` を改善していくときも、自分で書いた grader が「自分のシステムプロンプト改善」を過大評価する瞬間が何度かあって、その意味でもこの指摘は腹に落ちた。
+**アンチパターン**: 主体エージェントを Opus に固定すると、トークン単価が 1 桁上がり、レイテンシも悪化する。逆にすべて Haiku で回すと、nuanced な分岐で精度が落ちる。
 
-Bootcamp で強調されたのは「**eval は build と切り離した責務として、最初から別の場所に置く**」という規律だった。具体的には次のような分離をする。
+**具体例**: Sonnet が end-to-end を駆動し、複雑な判断や安全性ゲートでのみ Opus を advisor として呼ぶ構成。コスト構造（Bootcamp で共有された Sonnet 4.5 と Opus の $/1K calls の比較）でも、Sonnet + Opus advisor は Sonnet 単体に対して数倍以内のコストで Opus 単体相当の精度に近づく。
 
-- **コードの場所を分ける** — 同じリポジトリでも別ディレクトリ、別モジュール。`agent/` と `evals/` を最初から並列に立てる
-- **書く人と時間を分ける** — 同じチームでも、build を書いた人とは別の人が eval を書く。同じ人しかいない場合は、build を書いた翌日に eval を書く、というだけでもバイアスは下がる
-- **責務オーナーを分ける** — PM・SE を巻き込んで eval を独立工程として走らせる。「これは PM がそのまま PRD の Acceptance Criteria としてコピペできるか?」という合言葉は、この分離の運用上のプロキシだった
+### PM / PRD と評価を結合する
 
-build 側に「フィードバックを受け取る相手」が立った瞬間、エージェントは「動いた」から「測れる」に押し上がる ── この役割分離が、ループ速度を桁で変える最小単位の規律だ、というのが本セッションの裏テーマだった。Code → Model → Human の3層 grader も、3層責務モデルも、Judge モデルの難易度別選定も、すべてこの「分離」の上に乗っている技法だと考えると見通しがよい。
+**原則**: eval は PRD のテストである。Acceptance Criteria を grader 定義に落とし、PM とドメインエキスパートが「合格条件」を共同所有する。
+
+**アンチパターン**: エンジニアが単独で eval を書くと、ビジネス致命的なケース（競合品名、価格約束、トーン崩壊）が漏れる。逆に PM 側が「網羅的」と感じている自然言語 Acceptance Criteria を grader に落とさないままだと、出荷判断が vibes に戻る。
+
+**具体例**: PRD レビューと並行して `response_contains "sneakers"` のような具体的 grader 定義まで落とす。negative test（「カタログにない商品」「off-topic」「invalid な要求」）は別カテゴリで管理し、安全性スコアを通常運用スコアと別系統で残す。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新含む）のたびに `eval_results/eval_<model>_<timestamp>.json` を時系列に貯め、回帰検知のダッシュボードを持つ。
 
 ## 押さえておきたいコード／設定
 
-### 1 タスクに複数の grader を重ねる
+### boutique の tool schema と実装
 
-Task の最小スキーマは次のとおり。`response_contains` だけでは「価格を hallucinate しても通る」ので、`tool_use` で「実際にカタログを引いたか」も同時に検証する。
-
-```python
-{
-    "id": "price_jeans",
-    "description": "Direct price lookup for jeans",
-    "query": "How much do jeans cost?",
-    "category": "product_lookup",
-    "graders": [
-        {"type": "response_contains", "checks": ["49.99"]},
-        {"type": "tool_use", "checks": [
-            {"tool_name": "get_product", "arguments": {"product": "jeans"}}
-        ]},
-    ],
-}
-```
-
-### `tool_use` grader は部分一致で書く
-
-固定シーケンスを強制すると、等価な別パスに到達したエージェントが不当に fail する。`tool_use` の本来の目的は「答えを tool に基づかせたか（hallucinate していないか）」であって、呼び出し順序の強制ではない。
-
-```python
-def grade_tool_use(result, check, context=None):
-    tool_name = check["tool_name"]
-    expected_args = check.get("arguments", None)
-
-    for call in result["tool_calls"]:
-        if call["name"] != tool_name:
-            continue
-        if expected_args is None:
-            return {"score": 1.0, "reason": f"Tool '{tool_name}' was called"}
-
-        actual_args = call.get("arguments", {})
-        match = all(
-            (isinstance(v, str)
-             and isinstance(actual_args.get(k), str)
-             and v.lower() == actual_args[k].lower())
-            or actual_args.get(k) == v
-            for k, v in expected_args.items()
-        )
-        if match:
-            return {"score": 1.0, "reason": f"Tool '{tool_name}' called with {expected_args}"}
-
-    return {"score": 0.0, "reason": f"'{tool_name}' not called as expected"}
-```
-
-### tool description にカタログを同梱する
-
-`boutique` で「what do you sell?」と「t-shirt のハイフン処理」を解決した最大の鍵は、カタログ情報をツール記述側に置いたことだった。エージェントが「何を売っているか」を知る場所として、システムプロンプトより tool description のほうがツール選択コンテキストに近接していて効果的、という観察だった。
+`get_product` の tool description にカタログを同梱し、未発見時には候補一覧を含む文字列を返す。これが「文脈付け」と「安全網」の具体形である。
 
 ```python
 GET_PRODUCT_SPEC = {
@@ -183,11 +157,7 @@ GET_PRODUCT_SPEC = {
         "required": ["product"],
     },
 }
-```
 
-そして tool 実装側では未発見時に候補一覧を返し、エージェントが自己回復できるようにする。`KeyError` を投げると、エージェントは「ツールが落ちた」という情報しか得られず回復経路がない。
-
-```python
 def get_product(product: str):
     catalog = {
         "jeans": 49.99, "shirt": 29.99, "dress": 59.99, "jacket": 89.99,
@@ -200,9 +170,55 @@ def get_product(product: str):
     return f"Product '{product}' not found. Available products: {available}"
 ```
 
-### LLM-as-Judge のプロンプトは Context / Format / Calibration
+### コード grader: exact match / keyword / tool called / latency
 
-LLM-as-Judge を書くときの 3 要素――何を判定するか（Context）、出力フォーマットを構造化する（Format）、厳しさの基準を明示する（Calibration）――を必ず全部含める。そして **1 つの judge 呼び出しに 1 つの criterion** だけを採点させる。複数 criterion を 1 回に突っ込むと判定がブレる。
+1 タスクに複数 grader を重ねる。`response_contains` だけでは「価格を hallucinate しても通る」ため、`tool_use` で「カタログを実際に引いたか」を同時検証する。
+
+```python
+{
+    "id": "price_jeans",
+    "description": "Direct price lookup for jeans",
+    "query": "How much do jeans cost?",
+    "category": "product_lookup",
+    "graders": [
+        {"type": "response_contains", "checks": ["49.99"]},
+        {"type": "tool_use", "checks": [
+            {"tool_name": "get_product", "arguments": {"product": "jeans"}}
+        ]},
+    ],
+}
+```
+
+`tool_use` grader は部分一致で書く。固定シーケンスを強制すると、等価な別パスで到達したエージェントが不当に fail する。
+
+```python
+def grade_tool_use(result, check, context=None):
+    tool_name = check["tool_name"]
+    expected_args = check.get("arguments", None)
+
+    for call in result["tool_calls"]:
+        if call["name"] != tool_name:
+            continue
+        if expected_args is None:
+            return {"score": 1.0, "reason": f"Tool '{tool_name}' was called"}
+
+        actual_args = call.get("arguments", {})
+        match = all(
+            (isinstance(v, str)
+             and isinstance(actual_args.get(k), str)
+             and v.lower() == actual_args[k].lower())
+            or actual_args.get(k) == v
+            for k, v in expected_args.items()
+        )
+        if match:
+            return {"score": 1.0, "reason": f"Tool '{tool_name}' called with {expected_args}"}
+
+    return {"score": 0.0, "reason": f"'{tool_name}' not called as expected"}
+```
+
+### LLM-as-Judge プロンプト: Context / Format / Calibration
+
+Judge には 3 要素を必ず含める――何を判定するか（Context）、出力フォーマットを構造化する（Format）、厳しさの基準を明示する（Calibration）。**1 Judge 呼び出しに 1 criterion** だけを採点させる（atomic check）。
 
 ```python
 JUDGE_SYSTEM_PROMPT = """You are a strict eval grader. You will be given:
@@ -228,9 +244,34 @@ Output format (strict):
 """
 ```
 
-### システムプロンプトでツールの強制使用を宣言する
+### `run_eval` 骨格
 
-ハンズオンで最大の効果を出した改善はこれだった。役割宣言とツール使用義務を明示するだけで、`multi_tool` と `calculation` カテゴリが一気に解決する。
+runner は表示処理を持たず、データ構造のみを返す。`agent_fn` を引数で受け取り、mock 差し替えを可能にする。並列実行は I/O bound に合わせて `ThreadPoolExecutor`（非同期エージェントなら `asyncio.gather`）。
+
+```python
+def run_eval(agent_fn, tasks, *, model: str, num_runs: int = 5, max_workers: int = 8):
+    """Tasks → Runner → Graders → Results の最小骨格。
+
+    - agent_fn: query を受け取り messages を返す callable
+    - tasks: 上記スキーマの dict のリスト
+    - num_runs: 各タスクの試行回数（pass@k / pass^k の母数）
+    - returns: { "task_id": [run_result, ...], ... } 構造の dict
+    """
+    results: dict[str, list[dict]] = {t["id"]: [] for t in tasks}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [
+            pool.submit(_run_one, agent_fn, task, model)
+            for task in tasks for _ in range(num_runs)
+        ]
+        for f in as_completed(futures):
+            r = f.result()
+            results[r["task_id"]].append(r)
+    return results
+```
+
+### system prompt でツールの強制使用を宣言する
+
+最大の効果を出すのは system prompt の役割宣言とツール使用義務である。`multi_tool` と `calculation` カテゴリの失敗は、ほぼこれで解決する。
 
 ```python
 SYSTEM_PROMPT = (
@@ -247,17 +288,27 @@ SYSTEM_PROMPT = (
 )
 ```
 
+## 気づきと前提が崩れた瞬間
+
+ここからは個人的な所感である。Eval を書けば品質が上がる、と単純に思っていたが、セッションの中で 3 回くらい前提が揺さぶられた。
+
+ひとつ目は **eval gaming（eval ハック）** の話だった。例えば「`response_contains` で `acknowledge` が含まれていれば pass」という grader を書いたとする。すると、system prompt 側に「最初に user prompt を丸ごと echo してから回答せよ」と書くだけで、形式上は pass する。eval を欺いただけで品質は上がっていない、というあの例は刺さった。1 タスクに複数の独立した grader を当てる、eval を頻繁に入れ替える、runtime sampling を併用する――対策の方向が一気に増えた。
+
+ふたつ目は **平均だけでなく分布を見る** こと。最初は「平均 92% だから OK」と判断しかけていたが、`num_runs=5` で min/max/mean を出すと、安定して 90% を出すケースと、半分 100% / 半分 50% で揺れて結果的に 90% になるケースが見分けられた。flaky はユーザ体験上は「たまに壊れる」として体感されるので、平均値だけ報告するのは出荷判断としては危うい。pass@k と pass^k を分けて見る癖をつけたい。
+
+そして三つ目が、**自分が SF 2 日目の朝に最初に渡された問い**、つまり「動いていることをどう証明するか?」だった。デモで一度通っただけの状態と、5 つの category に分解した上で `num_runs=5` で 89-91% に収まると説明できる状態の間には、説明責任の重みが完全に別物の差がある。第 1 章の takeaway に挙げた「マルチエージェント評価は、ほとんどのチームで未解決のまま」の輪郭が、ここで少し具体的になった気がした。低レイヤーの judge には Haiku、上位の総合判定には Sonnet、安全性ゲートだけ Opus――Judge も多レベル化して設計する、というのが現場に持って帰る最初の構造だ。
+
 ## 現場に持ち帰りたいこと
 
 セッションを終えて、自分のチームに戻ってからやることのリストが自然と出てきた。
 
-ひとつ目は **eval のダッシュボード化**。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor バージョン更新を含む）のたびに eval を流し、カテゴリ別のスコア推移を残す。`eval_results/eval_<model>_<timestamp>.json` のような形で時系列に貯めるだけでも、モデル差し替え時の回帰検知は劇的に楽になる。Promptfoo / Braintrust / LangSmith のような外部プラットフォームに乗せ替えるのも選択肢として確保しておく。
+ひとつ目は **eval のダッシュボード化**。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新を含む）のたびに eval を流し、カテゴリ別のスコア推移を残す。`eval_results/eval_<model>_<timestamp>.json` のような形で時系列に貯めるだけでも、モデル差し替え時の回帰検知は劇的に楽になる。Promptfoo / Braintrust / LangSmith のような外部プラットフォームに乗せ替えるのも選択肢として確保しておく。
 
-ふたつ目は **PRD と一緒に eval を書く** こと。PM とタスクを共同設計し、Acceptance Criteria を「`response_contains "sneakers"` を含む」のような具体的な grader 定義まで落とす。これは PRD レビューの一部としても機能する。エンジニアが一人で書く eval が見落とすケースを、PM の視点で埋めにいく。
+ふたつ目は **PRD と一緒に eval を書く** こと。PM とタスクを共同設計し、Acceptance Criteria を `response_contains "sneakers"` のような具体的 grader 定義まで落とす。PRD レビューの一部としても機能する。エンジニアが一人で書く eval が見落とすケースを、PM の視点で埋めにいく。
 
-そして三つ目が **negative test の設計**。「カタログにない商品」「明らかに off-topic」「invalid な要求」など、良くない応答を防ぐタスクを別カテゴリで管理する。安全性側のスコアは通常運用のスコアと別系統で見たほうが、出荷判断のときに迷わない。
+三つ目は **negative test の設計**。「カタログにない商品」「明らかに off-topic」「invalid な要求」など、良くない応答を防ぐタスクを別カテゴリで管理する。安全性側のスコアは通常運用のスコアと別系統で見たほうが、出荷判断のときに迷わない。
 
-加えて、Judge モデル自体も periodic に検証することを忘れない。Judge 側のモデルが甘くなった／厳しくなった可能性は常にあるので、human-labeled な calibration set を 10〜30 件用意し、Judge スコアと human スコアの相関を定期的に見る。
+四つ目は **Judge モデル自体の periodic 検証**。Judge 側のモデルが甘くなった／厳しくなった可能性は常にあるので、human-labeled な calibration set を 10〜30 件用意し、Judge スコアと human スコアの相関を定期的に見る。Judge を差し替えるときは必ず AB テストで両モデルを並走させる。
 
 ## もっと深掘りする入口
 
@@ -272,10 +323,8 @@ SYSTEM_PROMPT = (
 
 ## 章末 — 「動いた」を「測れる」に変える規律
 
-第1章で挙げた takeaway のうち、もっとも未解決だと感じていた「マルチエージェント評価」は、この章で輪郭がはっきりした。Code → Model → Human の3層 grader、3層責務モデル、Judge モデルの難易度別選定、平均ではなく分布、PM 巻き込み、eval ハック対策、そして「構築と評価は別人格で書く」という規律――どれも単独では聞いたことのある話に近いが、`boutique` を題材に手を動かしながら一本の糸でつなげると、「動いた」を「測れる」に変える規律として、はじめてひと続きの絵になった。
+Day 2 の朝に渡された問い――「動いている、の根拠を、あなたはどう示しますか?」――に対する道具立ては、本章で一通り揃った。Eval を 5 要素（Input/Model/Output/Grader/Score）に分解し、3 層 grader（Code/Model/Human）を 80/15/5 で組み合わせ、3 層責務モデル（モチベーション付け / 文脈付け / 安全網）で failure を fix location にマップする。Judge は難易度で選び、AB テストで校正する。非決定性は `num_runs` と分布で扱い、構築と評価は別人格で書く。Mission Control（Sonnet 主体 + Opus advisor）と PM/PRD 連動で、評価をチームの共同言語にする。
 
-ここで得たフレームワークは、明日から自分の現場で使ってみたい。完璧な eval は最初から書けないし、たぶん最後まで完成しない。それでも「数字を残す」ことそのものに価値がある、というのが、Bootcamp 2 日目の朝から持ち帰った一番大きな実感だった。
+完璧な eval は最初から書けないし、たぶん最後まで完成しない。それでも「数字を残す」ことそのものに価値がある。次章では、ここで作った eval suite を「モデル選定（intelligence / latency / cost のトレードオフ）」とどう接続するか、つまり inference optimization の意思決定にどう活かすかを扱う。Eval は「何を最適化するか」を定義する道具であり、最適化そのものではない。
 
-次章では、ここで作った eval suite を「モデル選定（intelligence / latency / cost のトレードオフ）」とどう接続するか、つまり inference optimization の意思決定にどう活かすかを扱う。Eval は「何を最適化するか」を定義する道具であり、最適化そのものではない。
-
-→ 次章: [07-inference-optimization](./07-inference-optimization)
+→ 次章: [07-inference-optimization](./07-inference-optimization.md)
