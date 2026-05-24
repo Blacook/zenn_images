@@ -1,5 +1,5 @@
 ---
-title: "マルチエージェント障害の診断フレームワーク — artifacts から根本原因を当てる"
+title: "Day1-04: マルチエージェント障害の診断フレームワーク — artifacts から根本原因を当てる"
 free: true
 ---
 
@@ -161,7 +161,7 @@ orchestrator と sub-agent を同一モデルで揃える必要はない。判�
 
 分類・分岐・統合のような高負荷の判断を担う coordinator を Opus、個別ツールを定型的に回す sub-agent を Sonnet または Haiku に分ける。planning に上位モデル、execution に高速モデルという階層は、コストと精度の両面で合理的。
 
-## 押さえておきたいコード／設定
+## 押さえておきたいコード/設定
 
 T-4471 の coordinator trace の決定的な部分を引用しておく。coordinator は 2 件あることを正しく認識しており、モデルの分類能力ではなく、その後の構造が問題であることが分かる。
 

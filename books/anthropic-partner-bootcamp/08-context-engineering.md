@@ -1,5 +1,5 @@
 ---
-title: "Context Engineering — Context Rot との戦い"
+title: "Day2-03: Context Engineering — Context Rot との戦い"
 free: true
 ---
 
@@ -229,7 +229,7 @@ Part 2 で組んだ `INPUT_LENGTHS × DEPTHS` のグリッドそのままを、�
 
 ---
 
-## 押さえておきたいコード／設定
+## 押さえておきたいコード/設定
 
 実装側で手元に残しておきたいスニペットを抜き出しておく。すべて `Context_Engineering.ipynb` のセル番号と対応する。
 

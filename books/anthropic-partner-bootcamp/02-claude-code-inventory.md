@@ -1,5 +1,5 @@
 ---
-title: "Claude Code 実践 — Inventory Management で学ぶ12ステップ"
+title: "Day1-01: Claude Code 実践 — Inventory Management で学ぶ12ステップ"
 free: true
 ---
 
@@ -253,7 +253,7 @@ Orders are implemented for reference **.
 
 在庫管理アプリでは `vue-expert` Subagent が `.vue` 編集に強制委譲され、Worktrees は触れないが「ダークモード試作を Worktree で隔離する」シナリオが提示される。Hooks はステップ 12 で format/typecheck フックの形で並ぶ。輪郭をつかんでおくと、現場で「ここはこれを使う」と当てがつけられるようになる。
 
-## 押さえておきたいコード／設定
+## 押さえておきたいコード/設定
 
 ハンズオンで何度も立ち返った「型」を抜粋する。
 
@@ -349,7 +349,7 @@ PostToolUse Hook の最小例 (前掲)。`prettier` を `eslint`, `mypy`, `tsc` 
 - **`/context` を会話の計器にする**
   - 30 ターン超でコンテキストウィンドウを確認し、80% で `/compact`、90% で `/clear` の三段構えを習慣化する。重要事実は事前に `CLAUDE.md` や`memory` へ逃がす。
 
-- **Hooks で規律を機械化する**
+- **`Hooks` で規律を機械化する**
   - プロジェクト初期に `format`/`typecheck`/`lint` の `PostToolUse` を整え、プロンプトで頼まなくても規律が回る土台を最初に整備する。
 
 - **`CLAUDE.md` と Skill `description` を「観測可能な制約」で書き直す**

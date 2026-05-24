@@ -1,5 +1,5 @@
 ---
-title: "Developer Platform — Messages API でエージェントを素手で組む"
+title: "Day1-02: Developer Platform — Messages API でエージェントを素手で組む"
 free: true
 ---
 
@@ -48,7 +48,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 ### 思考モードと effort は粒度を分ける
 
 :::message
-**原則**: `thinking` パラメタは「思考をどう生成するか」、`output_config.effort` は「どこまで深く考えるか」を制御する。`thinking` の値は `"adaptive"`（複雑さに応じて自動）／`"enabled"`（常に生成）／`"none"`（無効）の 3 種。`effort` は `"low"` / `"medium"` / `"high"` / `"xhigh"` / `"max"` の 5 段階で、**API デフォルトは `"high"`**（パラメータ省略時と同じ挙動）。`xhigh` は Claude Opus 4.7 専用の拡張レベルで、長時間のエージェント・コーディングタスク向けに Anthropic は **Opus 4.7 のコーディング／エージェント用途は `xhigh` から始めることを推奨**している。`max` は Mythos Preview / Opus 4.7 / Opus 4.6 / Sonnet 4.6 で利用可能な絶対最大の能力。adaptive + effort の組み合わせで「複雑なら深く、簡単なら浅く、上限はこちらで握る」が成立する。
+**原則**: `thinking` パラメタは「思考をどう生成するか」、`output_config.effort` は「どこまで深く考えるか」を制御する。`thinking` の値は `"adaptive"`（複雑さに応じて自動）/`"enabled"`（常に生成）/`"none"`（無効）の 3 種。
+
+`effort` は `"low"` / `"medium"` / `"high"` / `"xhigh"` / `"max"` の 5 段階で、**API デフォルトは `"high"`**（パラメータ省略時と同じ挙動）。
+`xhigh` は Claude Opus 4.7 専用の拡張レベルで、長時間のエージェント・コーディングタスク向けに Anthropic は **Opus 4.7 のコーディング/エージェント用途は `xhigh` から始めることを推奨**している。
+`max` は Mythos Preview / Opus 4.7 / Opus 4.6 / Sonnet 4.6 で利用可能な絶対最大の能力。adaptive + effort の組み合わせで「複雑なら深く、簡単なら浅く、上限はこちらで握る」が成立する。
 :::
 
 :::message alert
@@ -57,7 +61,7 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 #### **ハンズオンでの具体例**
 
-Part 2 の `run_agent_thinking()` は同一チケット `TKT-1046`（Singapore 拠点・15% の API が間欠 500）を `high` と `low` で連投する。`high` の思考トレースには「Singapore region routing degradation の可能性」「retry-success の頻度が rate limit パターンと一致しない」といった仮説が立つ一方、`low` ではほぼ言及されない。経過時間も `high≈22s` / `low≈19s` と差が出る。Opus 4.7 で実運用に持ち上げるなら、複雑チケットを `xhigh`、単純チケットを `medium`〜`low` にルーティングするのが筋の良い設計になる。
+Part 2 の `run_agent_thinking()` は同一チケット TKT-1046（Singapore 拠点・15% の API が間欠 500）を `high` と `low` で連投する。`high` の思考トレースには「Singapore region routing degradation の可能性」「retry-success の頻度が rate limit パターンと一致しない」といった仮説が立つ一方、`low` ではほぼ言及されない。経過時間も `high≈22s` / `low≈19s` と差が出る。Opus 4.7 で実運用に持ち上げるなら、複雑チケットを `xhigh`、単純チケットを `medium`〜`low` にルーティングするのが筋の良い設計になる。
 
 -----
 
@@ -68,7 +72,7 @@ Part 2 の `run_agent_thinking()` は同一チケット `TKT-1046`（Singapore �
 :::
 
 :::message alert
-**アンチパターン**: ループ中の API コールに `format` を入れる。`tool_use` を返したいタイミングで「テキストは JSON でなければならない」と引っ張られ、ツール呼び出しが壊れる。スキーマで `additionalProperties` を省略するのも罠で、Claude が定義外のフィールドを生やして下流のパースが死ぬ。
+**アンチパターン**: ループ中の API コールに `format` を入れる。`tool_use` を返したいタイミングで「テキストは JSON でなければならない」と引っ張られ、ツール呼び出しが壊れる。スキーマで `additionalProperties` を省略するのも罠で、Claude が定義外のフィールドを生やして下流のパースが崩壊する。
 :::
 
 #### **ハンズオンでの具体例**
@@ -80,7 +84,7 @@ Part 1 後半の `run_agent_structured()` は、ツールループ中は `output
 ### Tool description は呼ばれ方を決める
 
 :::message
-**原則**: `tool` スキーマの `description` は Claude にとっての API ドキュメントで、`name` と `input_schema` 以上に「いつ呼ぶか／呼ばないか」を左右する。`input_schema` の各プロパティ `description` まで具体例を書くと、入力の質も上がる。
+**原則**: `tool` スキーマの `description` は Claude にとっての API ドキュメントで、`name` と `input_schema` 以上に「いつ呼ぶか/呼ばないか」を左右する。`input_schema` の各プロパティ `description` まで具体例を書くと、入力の質も上がる。
 :::
 
 :::message alert
@@ -89,7 +93,7 @@ Part 1 後半の `run_agent_structured()` は、ツールループ中は `output
 
 #### **ハンズオンでの具体例**
 
-ノートブックの `search_kb` description は "Use this to find troubleshooting steps, policies, or known solutions **before attempting to resolve a ticket.**" と **順序のヒント** が埋まっている。`resolve_ticket` の `status` プロパティは `enum: ["resolved", "escalated", "closed"]` と値域を絞り、description で `resolved = fix applied; escalated = needs Tier 2; closed = duplicate or invalid` と意味を明示している。これにより Claude のツール選択がほぼブレない。
+ハンズオンでの `search_kb` description は "Use this to find troubleshooting steps, policies, or known solutions **before attempting to resolve a ticket.**" と **順序のヒント** が埋まっている。`resolve_ticket` の `status` プロパティは `enum: ["resolved", "escalated", "closed"]` と値域を絞り、description で `resolved = fix applied; escalated = needs Tier 2; closed = duplicate or invalid` と意味を明示している。これにより Claude のツール選択がほぼブレない。
 
 -----
 
@@ -126,7 +130,11 @@ data = json.loads(text_blocks[-1].text)
 ### Streaming は UX 改善メトリクスである
 
 :::message
-**原則**: `client.messages.stream()` はコンテキストマネージャで、`content_block_start` / `content_block_delta` / `content_block_stop` の 3 種イベントが順番に流れる。`content_block_delta` の `delta.type` は `thinking_delta`（思考トークン）／`text_delta`（応答トークン）／`input_json_delta`（ツール引数 JSON の断片）の 3 種で、これらを別々にハンドリングすると思考・応答・ツール引数が独立した流れとして可視化できる。ストリーム終了後は `stream.get_final_message()` で完全な `Message` オブジェクトを取得する。
+**原則**: `client.messages.stream()` はコンテキストマネージャで、`content_block_start` / `content_block_delta` / `content_block_stop` の 3 種イベントが順番に流れる。
+
+`content_block_delta` の `delta.type` は `thinking_delta`（思考トークン）/`text_delta`（応答トークン）/`input_json_delta`（ツール引数 JSON の断片）の 3 種で、これらを別々にハンドリングすると思考・応答・ツール引数が独立した流れとして可視化できる。
+
+ストリーム終了後は `stream.get_final_message()` で完全な `Message` オブジェクトを取得する。
 :::
 
 :::message alert
@@ -139,25 +147,37 @@ Part 3 の `run_agent_streaming()` では `content_block_start` で `block.type`
 
 -----
 
-### クライアント側の地味な落とし穴
+### `timeout` は明示する
 
 :::message
-**原則**: 「Messages API はサーバ側に状態を持ち、SDK は薄い HTTP クライアントである」と考えて構成パラメタを揃える。
+**原則**: SDK は薄い HTTP クライアントなので、長尺生成に必要な timeout はクライアント側で明示的に握る。デフォルトに任せると、サーバ側で生成中なのにクライアント側だけがタイムアウトして例外で落ちる。
 :::
 
 :::message alert
-**アンチパターン**:
-
-- `timeout` を省略する。`max_tokens > 21333` で非ストリーミング呼び出しをすると、SDK デフォルトのタイムアウトに先に当たって落ちる。
-- API キーをノートブックや Git にハードコードする。
-- 1 年前のプロンプト・スキル定義を新モデルに使い回す（旧モデル向けの「最も賢い存在として振る舞え」「役割を与える」式のメタ指示は、新モデルではノイズになる場合がある）。
+**アンチパターン**: `timeout` を省略したまま `max_tokens` を大きく取る。`max_tokens > 21333` の非ストリーミング呼び出しで、SDK デフォルトのタイムアウトに先に当たって接続が切れる。サーバ側の生成は無駄に走り、クライアントだけが落ちる最悪のパターン。
 :::
 
 #### **ハンズオンでの具体例**
 
-ノートブック冒頭で `anthropic.Anthropic(timeout=900.0)` と明示している。API キーは `os.environ["ANTHROPIC_API_KEY"]` 経由で読み、`client.messages.create()` の `model` には `MODEL = "claude-sonnet-4-6"` を渡す。Setup セルは接続確認 (`Reply with only: ready`) と SDK バージョン表示を兼ねており、これを毎回最初に走らせるとデバッグが楽になる。
+ノートブック冒頭で `anthropic.Anthropic(timeout=900.0)` と明示している。`max_tokens=32000` を全コールで使う設計なので、デフォルトでは確実に落ちる。`MODEL = "claude-sonnet-4-6"` と組み合わせて、構成パラメタは setup セル 1 箇所に集約する。
 
-## 押さえておきたいコード／設定
+-----
+
+### モデル更新時にプロンプトと SDK 前提を見直す
+
+:::message
+**原則**: モデル世代が変わると、効くプロンプトの書き方も、推奨される SDK パラメタの組み合わせも変わる。新モデルに乗り換える際は、システムプロンプト・スキル定義・`thinking` / `output_config` / `tool_choice` の前提を **毎回読み直す対象** として扱う。
+:::
+
+:::message alert
+**アンチパターン**: 1 年前のプロンプト・スキル定義を新モデルに使い回す。旧モデル向けの「最も賢い存在として振る舞え」「役割を与える」式のメタ指示は、新モデルではノイズになる場合がある。effort や thinking の段階数も世代ごとに増減しており、古い前提のままだと「考えさせる」ための引き出しを取り逃がす。
+:::
+
+#### **ハンズオンでの具体例**
+
+ノートブックは `MODEL = "claude-sonnet-4-6"` を冒頭で固定し、`setup` セルで SDK バージョン表示と接続確認 (`Reply with only: ready`) を兼ねる。これを毎回最初に走らせれば、SDK 更新によるパラメタ仕様の変化（`thinking` の値域、`output_config.effort` の段階数など）が即座に表面化する。実際、workshop 素材では effort が `low / medium / high` の 3 段で説明されていたが、本章をまとめる段で `low / medium / high / xhigh / max` の 5 段に拡張されていることに気づいた ── これはまさに「モデル世代と一緒に SDK 前提を読み直す」の現場例である。
+
+## 押さえておきたいコード/設定
 
 ### クライアント初期化
 

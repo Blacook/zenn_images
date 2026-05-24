@@ -1,5 +1,5 @@
 ---
-title: "Eval 駆動の品質保証 — 5要素パイプラインと3層grader、3層責務モデル"
+title: "Day2-01: Eval 駆動の品質保証 — 5要素パイプラインと3層grader、3層責務モデル"
 free: true
 ---
 
@@ -184,7 +184,7 @@ Sonnet が end-to-end を駆動し、複雑な判断や安全性ゲートでの�
 
 PRD レビューと並行して `response_contains "sneakers"` のような具体的 grader 定義まで落とす。negative test（「カタログにない商品」「off-topic」「invalid な要求」）は別カテゴリで管理し、安全性スコアを通常運用スコアと別系統で残す。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新含む）のたびに `eval_results/eval_<model>_<timestamp>.json` を時系列に貯め、回帰検知のダッシュボードを持つ。
 
-## 押さえておきたいコード／設定
+## 押さえておきたいコード/設定
 
 ### boutique の tool schema と実装
 
@@ -370,7 +370,7 @@ SYSTEM_PROMPT = (
   - 「カタログにない商品」「明らかに off-topic」「invalid な要求」など、良くない応答を防ぐタスクを別カテゴリで管理する。安全性側のスコアは通常運用のスコアと別系統で見たほうが、出荷判断のときに迷わない。
 
 - **Judge モデル自体の periodic 検証**
-  - Judge 側のモデルが甘くなった／厳しくなった可能性は常にあるので、human-labeled な calibration set を 10〜30 件用意し、Judge スコアと human スコアの相関を定期的に見る。Judge を差し替えるときは必ず AB テストで両モデルを並走させる。
+  - Judge 側のモデルが甘くなった/厳しくなった可能性は常にあるので、human-labeled な calibration set を 10〜30 件用意し、Judge スコアと human スコアの相関を定期的に見る。Judge を差し替えるときは必ず AB テストで両モデルを並走させる。
 
 ## もっと深掘りする入口
 

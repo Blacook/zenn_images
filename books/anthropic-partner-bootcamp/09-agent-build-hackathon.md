@@ -1,5 +1,5 @@
 ---
-title: "Agent Build Hackathon — 初見の入力に耐える RFP エージェント"
+title: "Day2-04: Agent Build Hackathon — 初見の入力に耐える RFP エージェント"
 free: true
 ---
 
@@ -212,7 +212,7 @@ Hallucination trap で失敗した場合の修正は、システムプロンプ�
 
 ハッカソンの 60 分は MVP（Parse + Retrieve + Draft）+ Review までを射程とし、memory tool / compaction は別演習の領域とする。Production 投入時は Effective context engineering の文書化された 3 プリミティブ（tool result clearing / compaction / memory tool）を順に追加する。
 
-## 押さえておきたいコード／設定
+## 押さえておきたいコード/設定
 
 3 層責務モデルの各層を、実装側でどう書き分けるかを示す。
 

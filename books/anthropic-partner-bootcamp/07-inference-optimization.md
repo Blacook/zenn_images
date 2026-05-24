@@ -1,5 +1,5 @@
 ---
-title: "推論最適化 — TTFT / TTC / OTPS / Cost を測って効かせる"
+title: "Day2-02: 推論最適化 — TTFT / TTC / OTPS / Cost を測って効かせる"
 free: true
 ---
 
@@ -10,13 +10,13 @@ free: true
 
 SLA を平均レイテンシで語ることは、クライアントが体験する遅さを覆い隠す。レストランの比喩がわかりやすい。半分の客には 5 分で料理が出てきて、もう半分には 25 分かかる店を「平均 15 分の店」と紹介されても、納得する客はいない。評判を決めるのは運悪く 25 分待たされた側の声であり、SLA 議論でも同じ構造が起きる。
 
-本章で扱う 4 指標と Prompt Caching の損益分岐は、その「運の悪い側」を数字で握り直すための道具立てだ。`mean()` ではなく p95 / p99 を、`tokens / TTC` ではなく `tokens / (TTC - TTFT)` を、そして「速い／安い」ではなく「どの確率でどの遅さでいくらか」を語れるようにする。
+本章で扱う 4 指標と Prompt Caching の損益分岐は、その「運の悪い側」を数字で握り直すための道具立てだ。`mean()` ではなく p95 / p99 を、`tokens / TTC` ではなく `tokens / (TTC - TTFT)` を、そして「速い/安い」ではなく「どの確率でどの遅さでいくらか」を語れるようにする。
 
 ---
 
 ## 題材 — 5 ステージと 4 指標
 
-ハンズオンの題材は `Inference_Optimization.ipynb`。単発呼び出しから始めて、モデル比較、Tool use ラウンドトリップ、Prompt caching の単発／マルチターン、最後に Bedrock / Strands 統合までを Notebook 上で計測する。
+ハンズオンの題材は `Inference_Optimization.ipynb`。単発呼び出しから始めて、モデル比較、Tool use ラウンドトリップ、Prompt caching の単発/マルチターン、最後に Bedrock / Strands 統合までを Notebook 上で計測する。
 
 LLM のレスポンスはユーザの目には 1 本のストリームに見えるが、内部では 5 つのステージに分かれている。
 
@@ -135,7 +135,7 @@ Notebook の `_stream_request` も `start_time = time.perf_counter()` で始ま�
 
 #### **ハンズオンでの具体例**
 
-Calculator tool を使う／使わない比較で、TTFT は `1437ms → 2339ms` と約 +900ms 増えた。
+Calculator tool を使う/使わない比較で、TTFT は `1437ms → 2339ms` と約 +900ms 増えた。
 
 | 条件 | TTFT (avg) | TTC (avg) |
 |---|---|---|
@@ -282,7 +282,7 @@ model = BedrockModel(
 
 ---
 
-## 押さえておきたいコード／設定
+## 押さえておきたいコード/設定
 
 ### Streaming で TTFT を計測する
 
