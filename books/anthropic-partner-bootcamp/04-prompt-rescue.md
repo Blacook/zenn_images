@@ -550,19 +550,15 @@ client.messages.create(
   > 最初は eval を「実装したあとの動作確認」くらいに位置づけていたが、これは順序が逆だった。観点が網羅されていない eval で 90% に届いても、本番では平気で落ちる ── customer brief が挙げた 4 つの failure mode と本番想定の 6 つの input shape を最初に並べた瞬間、これが eval の **必要条件であって十分条件ではない** ことが見えた。
   >
   > さらに気づいたのは、**プロンプト本体にも「この観点で eval される」と書き込んでおく** ことの効き目だ。`<final_reminder>` に以下のような自己チェック項目を 3〜5 個列挙すると、出力直前にモデル自身が eval 軸を再活性化する。
-
-```
-- all extracted fields explicitly present?
-- unknown fields set to null?
-- JSON matches schema exactly?
-```
- 
-eval ハーネスとプロンプトの自己チェックは別の道具に見えて、実は同じ「観点の網羅性」を 2 方向から保証する仕組みだった。eval 観点を増やしたら、その軸をプロンプトの `<final_reminder>` にも反映する ── この往復が回って初めて、「**測りながら直す**」が実現される。
+  > - all extracted fields explicitly present?
+  > - unknown fields set to null?
+  > - JSON matches schema exactly?
+  > eval ハーネスとプロンプトの自己チェックは別の道具に見えて、実は同じ「観点の網羅性」を 2 方向から保証する仕組みだった。eval 観点を増やしたら、その軸をプロンプトの `<final_reminder>` にも反映する ── この往復が回って初めて、「**測りながら直す**」が実現される。
 
 - 勘違い：「うまく書く」ことがプロンプトエンジニアリングである
   > 「うまく書く」のではなく、「**測りながら直す**」。プロンプトエンジニアリングが工学である、という言葉の意味が理解できた。
 
-## 現場に持ち帰りたいこと
+## 現場で実践したいこと
 
 - **Eval ハーネスをまず用意する**
   - プロンプトを書く前にテストケースを用意し、カテゴリ別にスコアを取れる状態を先に作る。これがないと、修正が本当に効いたのかが感覚でしか分からない。後段で起きた事故が、プロンプトのどの変更に起因するのかも追えなくなる。
@@ -576,7 +572,7 @@ eval ハーネスとプロンプトの自己チェックは別の道具に見え
 - **本番制約 (レイテンシ・モデル) を反復の前提条件にする**
   - 現実的な制約として `haiku` で 5 秒以内、という条件を意識しつづけたのも良い経験だった。Chain of Thought を冗長にし過ぎる、Few-shot を 10 件以上入れる、といった「品質は上がるが遅くなる」改善は、本番制約を破る。examples は 2〜3 件、CoT のステップは 4〜5 個まで、というあたりが現実解だと思う。
 
-## もっと深掘りする入口
+## さらなる理解のために
 
 - [Anthropic Docs — Prompt engineering overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
 - [Anthropic Docs — Use XML tags to structure your prompts](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/use-xml-tags)

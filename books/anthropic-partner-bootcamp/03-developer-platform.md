@@ -358,7 +358,7 @@ data = json.loads(text_blocks[-1].text)
 - 勘違い：CLAUDE.md やスキルは 1 回書いたら終わり
   > Q&A の流れで一つ印象に残った言葉があった ── **「モデルが新しくなるたびに、CLAUDE.md やスキルを見直す癖を持つこと」**。1 年前のプロンプトは 1 年前のモデル向けに最適化されている。「役割を与える」「最も賢い存在として振る舞え」のような古い手癖は、今のモデルではむしろノイズになる。Messages API のループも同じで、SDK バージョンと一緒に **`thinking` / `output_config` / `tool_choice` の前提を毎リリース読み直す** 対象だと思うようになった。
 
-## 現場に持ち帰りたいこと
+## 現場で実践したいこと
 
 - **3 層責務モデルで「指示の置き場所」を分ける**
   - エージェントの挙動を決める指示は 3 つの層に分けると整理しやすい。
@@ -374,7 +374,7 @@ data = json.loads(text_blocks[-1].text)
 - **`effort=high` と `effort=low` を並べて投げる、をデバッグ手段にする**
   - 同じチケットを両方の effort で実行し、思考トレースを横に並べると、Claude が何を見て何を判断したかが読める。`high` でしか拾えない仮説があるなら、その種のチケットだけ `high` にルーティングする ── というのは triage の本番設計だけでなく、エージェント開発中のデバッグツールとしても優秀だった。
 
-## もっと深掘りする入口
+## さらなる理解のために
 
 - [Tool use 概要](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview)
 - [Agentic tool use パターン](https://docs.anthropic.com/en/docs/build-with-claude/tool-use/agentic-tool-use)

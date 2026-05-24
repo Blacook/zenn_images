@@ -341,7 +341,7 @@ PostToolUse Hook の最小例 (前掲)。`prettier` を `eslint`, `mypy`, `tsc` 
 - 勘違い：`Plan Mode` はコード生成を遅らせる
   > `Plan Mode`による実装前の合意が、出来上がりの品質と納得感を明確に変えた。設計の手前で立ち止まる時間は、後工程の手戻りより安い。
 
-## 現場に持ち帰りたいこと
+## 現場で実践したいこと
 
 - **`Worktree` を「失敗のコストを下げる装置」として使う**
   - `git worktree` で別ブランチを別ディレクトリに切り出し、本流の作業を続けたまま実験的な改修を Claude に任せる。要らなくなれば Worktree ごと捨てる。試行回数が増える設計を、機能ではなく運用として定着させる。
@@ -355,7 +355,7 @@ PostToolUse Hook の最小例 (前掲)。`prettier` を `eslint`, `mypy`, `tsc` 
 - **`CLAUDE.md` と Skill `description` を「観測可能な制約」で書き直す**
   - 気合系の表現を一掃し、ファイルパス・関数名・構文要件などより明確な内容で記述する。
 
-## もっと深掘りする入口
+## さらなる理解のために
 
 - [Claude Code 公式ドキュメント](https://docs.anthropic.com/en/docs/claude-code)
 - [Claude Code Best Practices (Anthropic)](https://www.anthropic.com/engineering/claude-code-best-practices)

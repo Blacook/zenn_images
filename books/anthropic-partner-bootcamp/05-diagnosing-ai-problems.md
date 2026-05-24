@@ -28,11 +28,13 @@ Meridian は B2B SaaS 企業とサポートキューの間に立つ仲介サー�
 
 ### AI 障害の大半はモデル問題ではなく設計問題である
 
+:::message
+**原則**: 「動かない」の最初の原因候補に置くべきは、モデルの賢さではなく、**prompt の書き方・agent 同士の役割分担・tool の shape**。これらは Opus に乗り換えても直らない種類のバグで、設計側を直さない限り再発する。
+:::
+
 セッションの中心命題はこの 1 文に集約される。
 
 > Most AI system failures aren't model problems. They are prompt, agent architecture, and tool design problems.
-
-つまり「動かない」の最初の原因候補に置くべきは、モデルの賢さではなく、**prompt の書き方・agent 同士の役割分担・tool の shape** である。これらは Opus に乗り換えても直らない種類のバグで、設計の側を直さない限り再発する。
 
 :::message alert
 **アンチパターン**: 症状を見た瞬間にモデル変更（Sonnet → Opus）を提案する。プロンプトに例文を足して様子を見る。
@@ -40,13 +42,17 @@ Meridian は B2B SaaS 企業とサポートキューの間に立つ仲介サー�
 
 #### **ハンズオンでの具体例**
 
-T-4471 の coordinator trace を読むと、coordinator は冒頭で「このチケットには SSO と billing の 2 件がある」と正しく認識している。つまり分類能力は壊れていない。それでも 2 件は解決されない。原因は `spawn_specialist` のツール schema が single-dispatch しか許さない形になっていたことであって、モデルを上位に差し替えても、`list[string]` を受け取る形にしない限り同じ失敗を再生産する。
+T-4471 の coordinator trace を読むと、coordinator は冒頭で「このチケットには SSO と billing の 2 件がある」と正しく認識している。つまり分類能力は壊れていない。それでも 2 件は解決されない。
+
+原因は `spawn_specialist` のツール schema が single-dispatch しか許さない形になっていたことであって、モデルを上位に差し替えても、`list[string]` を受け取る形にしない限り同じ失敗を再生産する。
 
 -----
 
 ### Diagnostic Loop の 4 ステップを順に踏む
 
-Symptom → Hypothesis → Evidence → Recommendation の 4 ステップを、必ず順番に通す。ステップを飛ばさないことが、診断の質を決める。
+:::message
+**原則**: `Symptom` → `Hypothesis` → `Evidence` → `Recommendation` の 4 ステップを、必ず順番に通す。ステップを飛ばさないことが、診断の質を決める。
+:::
 
 | Step           | 質問                                                  | 出力                           |
 | -------------- | ----------------------------------------------------- | ------------------------------ |
@@ -56,9 +62,9 @@ Symptom → Hypothesis → Evidence → Recommendation の 4 ステップを、�
 | Recommendation | どのファイルのどこをどう変えれば再発しないか？        | 根本原因ごとに scoped な修正案 |
 
 - **Symptom**: 顧客の言葉を reframe しない。「SSO の問題」と縮めず、「SSO の問題と billing の問題を 2 件投げたのに SSO だけ返ってきた」と顧客の語彙そのままで書く。
-- **Hypothesis**: artifacts を開く前に最低 3 つコミットする。書く前にコミットすることで、自分の診断反射の強弱が可視化される。
-- **Evidence**: 「prompt が変」は evidence ではない。「coordinator system prompt の L23 で `pick the one the customer seems most blocked by` と書いている」のように、ファイル名・行番号・該当文字列まで具体化する。
-- **Recommendation**: 「prompt を改善する」では不十分。「`coordinator-tools.json` の `spawn_specialist` schema の `category: string` を `categories: list[string]` に変える」のように、ファイル名・行番号・差分まで scoped にする。行番号を指せないなら Evidence に戻る。
+- **Hypothesis**: artifacts を開く前に最低 3 つ考える。書く前に考えることで、自分の診断反射の強弱が可視化される。
+- **Evidence**: 「prompt が変」は evidence ではない。「coordinator system prompt の L23 で `pick the one the customer seems most blocked by` と書いている」のように、**ファイル名・行番号・該当文字列まで具体化**する。
+- **Recommendation**: 「prompt を改善する」では不十分。「`coordinator-tools.json` の `spawn_specialist` schema の `category: string` を `categories: list[string]` に変える」のように、**ファイル名・行番号・差分まで具体化 **する。行番号を指せないなら Evidence に戻る。
 
 :::message alert
 **アンチパターン**: Symptom を自分の言葉で要約し、Hypothesis を 1 つだけ立て、Evidence に「prompt がよくない」と書き、Recommendation を「プロンプトを改善する」で締める。
@@ -68,13 +74,15 @@ Symptom → Hypothesis → Evidence → Recommendation の 4 ステップを、�
 
 ### artifact は prompts / tool descriptions / execution traces の 3 点セットで要求する
 
-agentic system の診断を引き受けた最初の打ち合わせで、必ず要求すべき artifact は次の 3 点。
+:::message
+**原則**: agentic system の診断を引き受けた最初の打ち合わせで、必ず要求すべき artifact は **`system prompts` / `tool descriptions` / `execution traces`** の 3 点。これらが揃わないと、Diagnostic Loop の Evidence ステップが成立しない。
+:::
+
+要求する 3 点の役割は次のとおり。
 
 1. **System prompts** — agent が何をしようとしているかを示す。
 2. **Tool descriptions** — モデルが何を見られて、どのツールをいつ使うべきと判断するかを示す。
 3. **Execution traces** — 実際に何が起きたかを step by step で示す。
-
-この 3 点が揃わないと、Diagnostic Loop の Evidence ステップが成立しない。
 
 :::message alert
 **アンチパターン**: trace だけ見て「coordinator がツールを呼ばなかった」と結論する。tool description を見ずに「モデルの判断力不足」と書く。
@@ -82,13 +90,15 @@ agentic system の診断を引き受けた最初の打ち合わせで、必ず�
 
 #### **ハンズオンでの具体例**
 
-rate limit 事例の根本原因は `fetch_customer_v2_databricks` というツール名にあった。trace だけ見ると「メトリクス取得ツールを呼ばなかった」としか分からないが、tool description を並べて読むと、ツール名に「rate limit を疑ったとき呼ぶ」というトリガー語彙が一切含まれていないことが見える。
+rate limit 事例の根本原因は `fetch_customer_v2_databricks` というツール名にあった。trace だけ見ると「メトリクス取得ツールを呼ばなかった」としか分からないが、`tool description` を並べて読むと、ツール名に「rate limit を疑ったとき呼ぶ」というトリガー語彙が一切含まれていないことが見える。
 
 -----
 
 ### 構造的仮説のブートストラップリストを持つ
 
-マルチエージェント特有の典型的な構造的故障モードを、いつでも引き出せるカードとして手元に置いておく。Hypothesis ステップで artifacts に当たる前に、まずこのリストから 3 つ以上引き出す。
+:::message
+**原則**: マルチエージェント特有の典型的な構造的故障モードを、いつでも引き出せるカードとして手元に置いておく。`Hypothesis` ステップで artifacts に当たる前に、まずこのリストから 3 つ以上引き出す。
+:::
 
 1. **Routing / classification failure** — 分類または分岐の構造が壊れている。
 2. **Tool description too vague to use reliably** — モデルがツールを選ぶ判断材料になっていない。
@@ -105,7 +115,9 @@ rate limit 事例の根本原因は `fetch_customer_v2_databricks` というツ�
 
 ### 単一ディスパッチのボトルネックを疑う
 
-coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、multi-category 問題で必ず破綻する。原因はツール schema 側にあることが多く、prompt をどう書き直しても直らない。
+:::message
+**原則**: coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、multi-category 問題で必ず破綻する。**原因はツール schema 側**にあることが多く、prompt をどう書き直しても直らない。
+:::
 
 :::message alert
 **アンチパターン**: ツール側で `category: string` の単一 enum を受ける設計のまま、coordinator system prompt 側に「両方扱え」と書き足す。schema が許していないので、モデルは prompt に従えない。
@@ -119,21 +131,25 @@ T-4471 の trace は coordinator が両カテゴリを認識した直後、`spaw
 
 ### ツール名は呼び出しトリガーを含める
 
-モデルがツールを選ぶときに参照するのは、ツール名と description である。実装由来の語彙（バージョン番号、データストア名）だけでツール名を決めると、モデルが「いつ呼ぶか」を推測できない。
+:::message
+**原則**: モデルがツールを選ぶときに参照するのは、`ツール名`と `description`。実装由来の語彙（バージョン番号、データストア名）だけでツール名を決めると、モデルが「いつ呼ぶか」を推測できない。
+:::
 
 :::message alert
-**アンチパターン**: `fetch_customer_v2_databricks` のように、内部実装の語彙でツール名を決める。description にも「rate limit を疑ったとき」「使用量異常を確認したいとき」のトリガー条件が書かれていない。
+**アンチパターン**: `fetch_customer_v2_databricks` のように、内部実装の語彙でツール名を決める。`description` にも「rate limit を疑ったとき」「使用量異常を確認したいとき」のトリガー条件が書かれていない。
 :::
 
 #### **ハンズオンでの具体例**
 
-rate limit 事例では、`fetch_customer_v2_databricks` を `fetch_customer_metrics_for_rate_limiting` のように呼び出しトリガーを含む名前にリネームし、description に「use this when a customer reports rate limiting or usage anomalies」を加える。これで「メトリクスを呼ばずに plan config を読み上げる」失敗が構造的に防げる。
+rate limit 事例では、`fetch_customer_v2_databricks` を `fetch_customer_metrics_for_rate_limiting` のように呼び出しトリガーを含む名前にリネームし、`description` に「use this when a customer reports rate limiting or usage anomalies」を加える。これで「メトリクスを呼ばずに plan config を読み上げる」失敗が構造的に防げる。
 
 -----
 
 ### Sub-agent の over-claiming without acting を構造で防ぐ
 
-sub-agent が「自分のスコープ外です」「解決しました」と coordinator に返すとき、それが本当にツールを呼んだ結果なのかは prompt の文面だけでは保証できない。構造で強制する必要がある。
+:::message
+**原則**: sub-agent が「自分のスコープ外です」「解決しました」と coordinator に返すとき、それが本当にツールを呼んだ結果なのかは prompt の文面だけでは保証できない。**構造で強制**する必要がある。
+:::
 
 :::message alert
 **アンチパターン**: sub-agent system prompt に「必要なら resolution tool を呼びましょう」と書いて済ます。
@@ -151,7 +167,9 @@ sub-agent が「自分のスコープ外です」「解決しました」と coo
 
 ### モデルを階層的に配置する
 
-orchestrator と sub-agent を同一モデルで揃える必要はない。判断の重さに応じて階層化する。
+:::message
+**原則**: orchestrator と sub-agent を同一モデルで揃える必要はない。**判断の重さに応じて階層化**する。
+:::
 
 :::message alert
 **アンチパターン**: 全 agent を同じモデル（例: 全部 Sonnet）で組む。コストか精度のどちらかに無自覚な負債が溜まる。
@@ -159,7 +177,7 @@ orchestrator と sub-agent を同一モデルで揃える必要はない。判�
 
 #### **ハンズオンでの具体例**
 
-分類・分岐・統合のような高負荷の判断を担う coordinator を Opus、個別ツールを定型的に回す sub-agent を Sonnet または Haiku に分ける。planning に上位モデル、execution に高速モデルという階層は、コストと精度の両面で合理的。
+分類・分岐・統合のような高負荷の判断を担う coordinator を `Opus`、個別ツールを定型的に回す sub-agent を `Sonnet` または `Haiku` に分ける。planning に上位モデル、execution に高速モデルという階層は、コストと精度の両面で合理的。
 
 ## 押さえておきたいコード/設定
 
@@ -254,29 +272,37 @@ tool result の返却形式も、文字列 1 行ではなく構造化された d
 ## よくある勘違いと気づき
 
 - 勘違い：最初に立てた仮説のどれかが当たっているはず
-  > 確証した根本原因はそのどれでもなかった。routing failure / tool description / sub-agent over-claiming の 3 つを並べて diagnosis に入ったが、本当の犯人は `spawn_specialist` の schema が single-dispatch しか許さない設計と、coordinator system prompt の「複数カテゴリにまたがる場合は、顧客がいちばん困っていそうな一つを選べ」という文言のカップリングだった。**仮説リストを早く作ることは大事だが、artifact を全部読み終えるまで仮説は捨てない**。反射的に「最初の 3 つで終わり」と思った瞬間に、構造的故障モードを見落とす。
+  > 仮説リストを早く作ることは大事だが、**artifact を全部読み終えるまで仮説は捨てない**ことが重要である。反射的に「最初の 3 つで終わり」と思った瞬間に、構造的故障モードを見落とす。
+  >
+  > ハンズオンでは`routing failure` / `tool description` / `sub-agent over-claiming` の 3 つを並べて diagnosis に入ったが、根本原因はそのどれでもなかった。本当の犯人は以下 2 つだった。
+  > - `spawn_specialist` の schema が single-dispatch しか許さない設計
+  > - coordinator system prompt の「複数カテゴリにまたがる場合は、顧客がいちばん困っていそうな一つを選べ」という文言のカップリング
 
 - 勘違い：動かないのはモデルが弱いから
-  > 講師のスライド `Most AI system failures aren't model problems` で殴られて崩れた反射だった。T-4471 はモデルが正しく multi-issue を分類していて、ツール schema の shape が答えを許していなかっただけだった。**直す場所は coordinator prompt の 1 行と tool schema の数行**で、モデルを差し替える必要はなかった。「Opus に上げる」を最初に考える反射を、「まず prompt と tool schema と trace を読む」に置き換える。この章でいちばん腹落ちした地点だった。
+  >「`Opus` に上げる」を最初に考える反射を、「まず `prompt` と `tool schema` と `trace` を読む」に置き換える。講師のスライドにもあったように `Most AI system failures aren't model problems` はこの章で一番重要な考え方である。
+  >
+  > ハンズオンでは、T-4471 はモデルが正しく multi-issue を分類していて、ツール schema の shape が答えを許していなかっただけだった。**直す場所は coordinator prompt の 1 行と tool schema の数行**で、モデルを差し替える必要はなかった。
 
-- 勘違い：ツール名の opacity は実装の話
-  > `fetch_customer_v2_databricks` が rate limit 問題で誤呼び出されていたのは、**tool name と description にトリガー語彙が無かった**からだった。Claude にとってツール名と description は「いつ呼ぶかの API ドキュメント」であって、バックエンド名や version 情報を入れる場所ではない。`fetch_customer_metrics_for_rate_limiting` のようにユースケース語彙で書き直すと、ほぼ単独で誤呼び出しが消える。**命名は実装側ではなく Claude のドキュメントだ**、と再認識した。
+- 勘違い：ツール名の曖昧さ（opacity）は実装の話
+  > **命名は実装側ではなく Claude のドキュメントだ**、と再認識した。Claude にとって`ツール名`と `description` は「いつ呼ぶかの API ドキュメント」であって、バックエンド名や version 情報を入れる場所ではない。
+  >
+  > ハンズオンでは、`fetch_customer_v2_databricks` が rate limit 問題で誤呼び出されていたのは、**tool name と description にトリガー語彙が無かった**からだった。`fetch_customer_metrics_for_rate_limiting` のようにユースケース語彙で書き直すと、ほぼ単独で誤呼び出しが消えた。
 
 - 勘違い：実装も評価も書かない講義内容は薄い
-  > 終わってみるとこの章がいちばん現場に近い演習だった。クライアント案件で AI システムを引き継ぐとき、最初の数日はモデルを動かせず、手元には system prompt と tool schema と数本の trace しかない ── その状態で **「読んで診断書を書ける」スキルは、コードを書けることより強い**場面が想像より多い。Diagnostic Loop の 4 ステップ (Symptom → Hypothesis → Evidence → Recommendation) を、artifact が揃っていない状況での標準操作手順として身体に入れておく。
+  > 終わってみるとこの章がいちばん現場に近い演習だった。クライアント案件で AI システムを引き継ぐとき、最初の数日はモデルを動かせず、手元には `system prompt` と `tool schema` と数本の `trace` しかない ── その状態で **「読んで診断書を書ける」スキルは、コードを書けることより強い**場面が想像より多い。Diagnostic Loop の 4 ステップ (`Symptom` → `Hypothesis` → `Evidence` → `Recommendation`) を、artifact が揃っていない状況での標準操作手順として身につけておくことが重要であると感じた。
 
-## 現場に持ち帰りたいこと
+## 現場で実践したいこと
 
-- **「動かない」の最初の打ち合わせで prompts / tool descriptions / execution traces の 3 点を要求する**
+- **「動かない」の最初の打ち合わせで `prompts` / `tool descriptions` / `execution traces` の 3 点を要求する**
   - この 3 点が揃わない状態で出す仮説は、ほぼ無意味な反射に終わる。
 
 - **診断時に仮説を最低 3 つ強制する習慣を入れる**
   - 1 つしか立てないと、自分の bias がそのまま結論になる。Claude に投げて仮説を 3 つ出させ、自分が立てた 3 つと突き合わせて、自分の診断反射のどこが弱いかを毎回測定する。Claude を 絶対的存在（oracle） ではなく分析者 （profiler） として使う、という置き方が、この習慣の支えになっている。
 
 - **orchestrator に sub-agent より上位のモデルを置く設計を検討の俎上に乗せる**
-  - 分類・分岐・統合のような判断を担う coordinator を Opus、個別ツールを回す sub-agent を Sonnet や Haiku に分ける階層化は、コストと精度の両面で合理的。これまで「全部同じモデルでいい」と無自覚に置いていた構成は、まず疑うところから始める。
+  - 分類・分岐・統合のような判断を担う coordinator を `Opus`、個別ツールを回す sub-agent を `Sonnet` や `Haiku` に分ける階層化は、コストと精度の両面で合理的。これまで「全部同じモデルでいい」と無自覚に置いていた構成は、まず疑うところから始める。
 
-## もっと深掘りする入口
+## さらなる理解のために
 
 - ハンズオン教材本体: https://github.com/victorsteeb/Basecamp-Exercises.git
 - セッションの該当ディレクトリ: `day1/04_diagnosing-ai-problems/`
@@ -290,7 +316,7 @@ tool result の返却形式も、文字列 1 行ではなく構造化された d
 
 第 1 章で書いた takeaway #1 ——「AI Engineering の中心は、モデルではなく、その周辺の設計にある」——が、この章でようやく一つの具体例として閉じた気がしている。T-4471 のチケットは、モデルが正しく分類していたのに、ツールの shape が答えを許していなかったから壊れていた。直す場所は prompt の文言と tool schema の数行で、モデルを差し替える必要はなかった。
 
-「動かない」と言われたとき、最初に手を伸ばすべきはモデルカタログではなく、system prompt と tool definition と trace JSON だ。コードを書く前に、artifacts を読める人になること。これが、この章で得た一番大きな手応えだった。
+「動かない」と言われたとき、最初に手を伸ばすべきはモデルカタログではなく、`system prompt` と `tool definition` と `trace JSON` だ。コードを書く前に、**artifacts を読める人になる**こと。これが、この章で得た一番大きな手応えだった。
 
 次章では、ここで読み取った構造的故障モードを **評価する側** に回り、何をもって「直った」と言えるかを設計する eval の話に進む。診断と評価は、どちらか片方では現場で動かない。
 

@@ -334,7 +334,7 @@ REVIEWER_OUTPUT_SCHEMA = {
 - 勘違い：同じ責務を複数層で重複防御すれば安全になる
   > 第 4 章のショッピングアシスタント eval で 50% → 100% にジャンプした学びが、ここで「同じ責務を 3 箇所で重複防御する」のではなく「各層に異なる責務がある」という形で結晶化した。「うまく書く」のではなく「適切なレイヤーに書く」が判断軸だ、というのを自分のコードで体感した。
 
-## 現場に持ち帰りたいこと
+## 現場で実践したいこと
 
 教室を出るとき、次のスプリントから実務でやるべきことが具体的に置き換わって見えた。
 
@@ -349,7 +349,7 @@ REVIEWER_OUTPUT_SCHEMA = {
 - **1 スプリント以内に短命で回す**
   - エージェントは tool 設計・プロンプト・KB の 3 点同時にチューニングするため、長寿命ブランチで複数変更を重ねると何がスコアに効いたか切り分けられなくなる。
 
-## もっと深掘りする入口
+## さらなる理解のために
 
 - [Building effective agents — Anthropic Engineering Blog](https://www.anthropic.com/engineering/building-effective-agents): エージェント設計の基本パターン（augmented LLM, workflow, agent）を体系化した必読記事。
 - [Effective context engineering for AI agents — Anthropic Engineering Blog](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents): 第 8 章でも参照。Review ステップの context curation はここの議論がそのまま効く。
