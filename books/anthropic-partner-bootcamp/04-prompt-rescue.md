@@ -122,14 +122,30 @@ free: true
 :::
 
 :::message alert
-**アンチパターン**: BLEU / accuracy / latency といった汎用メトリクスだけを取って、業務固有の failure mode を捕まえそびれる。あるいは "clean" ケースばかりで eval を組み、本番で壊れる入力形状 (vague / non-native / multi-issue) を eval から落とす。「とりあえずスコアが上がっている」を続け、合格ラインを決めないまま反復してしまうのも罠。
+**アンチパターン**: `BLEU` / `accuracy` / `latency` といった汎用メトリクスだけを取って、業務固有の failure mode を捕まえそびれる。あるいは "clean" ケースばかりで eval を組み、本番で壊れる入力形状 (vague / non-native / multi-issue) を eval から落とす。「とりあえずスコアが上がっている」を続け、合格ラインを決めないまま反復してしまうのも罠。
 :::
 
 #### **ハンズオンでの具体例**
 
-TechSupport Corp の Customer Brief は failure mode を **4 つ** 明示している ── "JSON comes back broken" / "priorities are wrong" / "drafted responses sometimes contradict the classification" / (entities が hallucinate されることは "fails badly" の中身として diagnosis セクションで補足)。これが `score_case` の 4 軸 `json_valid` / `priority_correct` / `entities_accurate` / `response_coherent` にそのまま対応する。入力カテゴリの 6 分類 (clean / multi-issue / vague / non-native / feature-request / complex) も Brief の「production tickets are messy — multiple issues, vague descriptions, non-native English speakers」表現を分解したものだ。Success tier も Brief の制約から導かれており、**Baseline 75% / Optimizer 90% / Architect = self-healing chain** の 3 段。さらに、response coherence だけは判定不能なので "audited" フラグを立てたケースだけ `judge_response` で LLM-as-judge に回し、それ以外は auto-pass で済ませる ── judge コストと採点ノイズを同時に最小化する設計になっている。
+TechSupport Corp の Customer Brief は failure mode を **4 つ** 明示している。
 
-diagnosis を先に走らせるのも観点設計の一部だ。ノートブック cell 8 / cell 10 では、**失敗例 5 件を Claude に投げて "What structural patterns do you see?" と聞く meta-prompting** が最初の手順として推奨されている。Claude の挙げた "task interference" / "hallucinated entities" / "tone biasing priority" / "feature-request misclassified" が、そのまま採点軸とカテゴリの妥当性チェックとして機能する ── 「Brief の failure mode と diagnosis の patterns が一致していれば、その eval は顧客の課題を捉えている」と言える。
+- JSON comes back broken
+- priorities are wrong
+- drafted responses sometimes contradict the classification
+- entities are hallucinated
+
+これらが `score_case` の 4 軸 `json_valid` / `priority_correct` / `entities_accurate` / `response_coherent` にそのまま対応する。
+
+入力カテゴリの 6 分類 (clean / multi-issue / vague / non-native / feature-request / complex) も Brief の「production tickets are messy — multiple issues, vague descriptions, non-native English speakers」表現を分解したものだ。Success tier も Brief の制約から導かれており、**Baseline 75% / Optimizer 90% / Architect = self-healing chain** の 3 段。さらに、response coherence だけは判定不能なので "audited" フラグを立てたケースだけ `judge_response` で LLM-as-judge に回し、それ以外は auto-pass で済ませる ── judge コストと採点ノイズを同時に最小化する設計になっている。
+
+diagnosis を先に走らせるのも観点設計の一部である。ノートブック cell 8 / cell 10 では、**失敗例 5 件を Claude に投げて "What structural patterns do you see?" と聞く meta-prompting** が最初の手順として推奨されている。Claude の挙げた以下の観点： 
+
+- "task interference"
+- "hallucinated entities"
+- "tone biasing priority"
+- "feature-request misclassified" 
+
+が、そのまま採点軸とカテゴリの妥当性チェックとして機能する。つまり、「Brief の **failure mode と diagnosis の patterns が一致**していれば、その eval は顧客の課題を捉えている」と言える。
 
 -----
 
@@ -350,7 +366,12 @@ final_json = run_chain(
 )
 ```
 
-ポイントは 2 つ。1 つめは **各 stage で `system` を完全に差し替える** ことで、Claude の人格・出力契約・Few-shot をそのステージに最適化できる点。2 つめは **過去 stage の出力を `ORIGINAL TICKET` と `STEP N OUTPUT` のラベル付きで次 stage に渡す** 構造で、後段が前段の判定結果を参照しつつ元のチケット本文も見直せる点。`run_single_prompt` 内部で `_call_api_with_retry` を呼んでいるため、429/529 はチェーン全体で自動リトライされる。
+ポイントは 2 つ
+
+1. **各 stage で `system` を完全に差し替える** ことで、Claude の人格・出力契約・Few-shot をそのステージに最適化できる点。
+2. **過去 stage の出力を `ORIGINAL TICKET` と `STEP N OUTPUT` のラベル付きで次 stage に渡す** 構造で、後段が前段の判定結果を参照しつつ元のチケット本文も見直せる点。
+
+`run_single_prompt` 内部で `_call_api_with_retry` を呼んでいるため、429/529 はチェーン全体で自動リトライされる。
 
 :::
 
@@ -368,7 +389,16 @@ final_json = run_chain(
 
 #### **ハンズオンでの具体例**
 
-ロール定義 + Chain of Thought の組み合わせが効く。「冷静なシニアサポートエンジニアとして、出力前に以下を順に確認せよ: 1. 実質的な業務影響、2. 緊急性語彙と内容のギャップ、3. 明示エンティティの列挙、4. 不明項目の null 化、5. JSON 構造の完全性」のように、ペルソナに思考手順を埋め込む。
+ロール定義 + Chain of Thought の組み合わせが効く。以下のように、ペルソナに思考手順を埋め込む。
+
+```text
+冷静なシニアサポートエンジニアとして、出力前に以下を順に確認せよ: 
+1. 実質的な業務影響
+2. 緊急性語彙と内容のギャップ
+3. 明示エンティティの列挙
+4. 不明項目の null 化
+5. JSON 構造の完全性
+```
 
 -----
 
@@ -503,13 +533,13 @@ client.messages.create(
 
 ## よくある勘違いと気づき
 
-プロンプトの失敗の型を見つけ、仮説を立て、修正し、もう一度回す。その反復ループそのものが、プロンプトエンジニアリングの正体である。
+「プロンプトの失敗の型を見つけ、仮説を立て、修正し、もう一度回す」という反復ループそのものが、プロンプトエンジニアリングの本質である。
 
 - 勘違い：否定形「〜するな」でモデルの捏造を抑止できる
-  > 「製品名を捏造しないでください」と書けば伝わると思っていたが、実際にはモデルは否定形をあっさり見落とす。Bad / Good 対比に書き換え、それぞれに `<reason>` を添えた途端、捏造系の失敗が一気に減った。「禁止」を書くより、「失敗例と望ましい例と、その理由」を並べるほうが、構造として強い、というのは想像以上の効き目だった。
+  > 「製品名を捏造しないでください」と書けば伝わると思っていたが、実際にはモデルは否定形を見落とす。Bad / Good 対比に書き換え、それぞれに `<reason>` を添えた途端、捏造系の失敗が一気に減った。「禁止」を書くより、「失敗例と望ましい例と、その理由」を並べるほうが、構造として強い、というのは想像以上の効き目だった。
 
 - 勘違い：1 ショットで完璧なプロンプトを目指せる
-  > ある参加者は、20/21 まで通った後に最後の 1 件に固執して全体を書き換え、スコアが 12/21 まで逆戻りしたという。話を聞きながら、これは自分でも同じことをやりかけたなと感じた。カテゴリ別スコアを見て、最も弱い 1 カテゴリだけを直す。clean を壊さずに feature-request を上げる。次の反復で vague を狙う。そういう制約付きの反復のほうが、結果的に早く 21/21 へ到達した。
+  > ある参加者は、20/21 まで通った後に最後の 1 件に固執して全体を書き換え、スコアが 12/21 まで逆戻りしたという。カテゴリ別スコアを見て、最も弱い 1 カテゴリだけを直す。clean を壊さずに feature-request を上げる。次の反復で vague を狙う。そういう制約付きの反復のほうが、結果的に早く 21/21 へ到達した。
 
 - 勘違い：system prompt は 1 セッションを通じて固定する役割定義である
   > 実際は SDK の `messages.create()` を呼ぶたびに別の `system` を渡せるので、prompt chaining の各 stage ごとに **system prompt 自体を差し替えられる**。「優先度判定の Claude」「エンティティ抽出の Claude」「応答ドラフトの Claude」を、それぞれ別の人格として 3 回 API を呼ぶだけで実装できる ── という発見は地味だが大きかった。1 つの巨大プロンプトに役割・ルール・例・出力フォーマットを全部詰め込もうとしていたのは、SDK が許す自由度を自分が見落としていただけだった。
@@ -519,10 +549,18 @@ client.messages.create(
 - 勘違い：Eval は「あれば便利」なもので、実装後の動作確認として用意すれば足りる
   > 最初は eval を「実装したあとの動作確認」くらいに位置づけていたが、これは順序が逆だった。観点が網羅されていない eval で 90% に届いても、本番では平気で落ちる ── customer brief が挙げた 4 つの failure mode と本番想定の 6 つの input shape を最初に並べた瞬間、これが eval の **必要条件であって十分条件ではない** ことが見えた。
   >
-  > さらに気づいたのは、**プロンプト本体にも「この観点で eval される」と書き込んでおく** ことの効き目だ。`<final_reminder>` に「all extracted fields explicitly present? / unknown fields set to null? / JSON matches schema exactly?」のような自己チェック項目を 3〜5 個並べると、出力直前にモデル自身が eval 軸を再活性化する。eval ハーネスとプロンプトの自己チェックは別の道具に見えて、実は同じ「観点の網羅性」を 2 方向から保証する仕組みだった。eval 観点を増やしたら、その軸をプロンプトの `<final_reminder>` にも反映する ── この往復が回って初めて、「測りながら直す」が回路として閉じる。
+  > さらに気づいたのは、**プロンプト本体にも「この観点で eval される」と書き込んでおく** ことの効き目だ。`<final_reminder>` に以下のような自己チェック項目を 3〜5 個列挙すると、出力直前にモデル自身が eval 軸を再活性化する。
+
+```
+- all extracted fields explicitly present?
+- unknown fields set to null?
+- JSON matches schema exactly?
+```
+ 
+eval ハーネスとプロンプトの自己チェックは別の道具に見えて、実は同じ「観点の網羅性」を 2 方向から保証する仕組みだった。eval 観点を増やしたら、その軸をプロンプトの `<final_reminder>` にも反映する ── この往復が回って初めて、「**測りながら直す**」が実現される。
 
 - 勘違い：「うまく書く」ことがプロンプトエンジニアリングである
-  > 「うまく書く」のではなく、「測りながら直す」。プロンプトエンジニアリングが工学である、という言葉の意味が理解できた。
+  > 「うまく書く」のではなく、「**測りながら直す**」。プロンプトエンジニアリングが工学である、という言葉の意味が理解できた。
 
 ## 現場に持ち帰りたいこと
 
@@ -533,10 +571,10 @@ client.messages.create(
   - 優先度・エンティティ・応答を 1 プロンプトで処理していたものを、3 ステップに分けると、各ステップが短くなり、Few-shot も対象を絞れて精度が上がる。「1 プロンプトで全部やろうとしない」という設計判断は、構造化と並ぶ最重要のレッスンだった。
 
 - **Confidence を必ず出力させる**
-  - `high / medium / low` を返させ、low のときは追加情報要求に分岐する。これは単に分類精度を上げるだけでなく、「分からないものを分からないと言える」モデルにするための入口になる。後段ワークフローの設計が、確信度ベースで一段クリーンになる。
+  - `high` / `medium` / `low` を返させ、`low` のときは追加情報要求に分岐する。これは単に分類精度を上げるだけでなく、「分からないものを分からないと言える」モデルにするための入口になる。後段ワークフローの設計が、確信度ベースで一段クリーンになる。
 
 - **本番制約 (レイテンシ・モデル) を反復の前提条件にする**
-  - 現実的な制約として `haiku` で 5 秒以内、という条件を意識しつづけたのも良い経験だった。Chain of Thought を冗長にし過ぎる、Few-shot を 10 件以上入れる、といった「品質は上がるが遅くなる」改善は、本番制約を破る。examples は 2〜3 件、CoT のステップは 4〜5 個まで、というあたりが現実解だ。
+  - 現実的な制約として `haiku` で 5 秒以内、という条件を意識しつづけたのも良い経験だった。Chain of Thought を冗長にし過ぎる、Few-shot を 10 件以上入れる、といった「品質は上がるが遅くなる」改善は、本番制約を破る。examples は 2〜3 件、CoT のステップは 4〜5 個まで、というあたりが現実解だと思う。
 
 ## もっと深掘りする入口
 
@@ -552,7 +590,7 @@ client.messages.create(
 - [Anthropic Cookbook — Prompt engineering examples](https://github.com/anthropics/anthropic-cookbook)
 - [ハンズオン公式リポジトリ](https://github.com/victorsteeb/Basecamp-Exercises.git) (`day1/03_prompt-rescue/`)
 
-## 章末 — Eval なしでプロンプトを改善するのは、祈祷だ
+## 章末 — Eval なしでプロンプトを改善するのは、自己満足だ
 
 21 件のチケットをひたすら回し、失敗ログを眺め、仮説を立てて 1 行直し、再測定する。その繰り返しを 10 周もすると、プロンプトが「文章」ではなく「テストで担保された仕様」として理解できる。
 
