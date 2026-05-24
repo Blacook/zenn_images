@@ -37,7 +37,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 **アンチパターン**: 「何を評価しているか」を明確にしないまま eval スクリプトを書き始めると、grader の責務とタスク設計が混ざり、結果の解釈が不能になる。runner に表示処理を埋め込んだり、grader が複数の独立した観点を 1 関数で採点したりすると、再利用も差し替えも難しくなる。
 :::
 
-**具体例**: 公式ハーネスは runner と grader を明示的に分離している。`run_eval()` はデータ構造を返すだけで、`print_summary()` は別関数。grader は `GRADER_REGISTRY` という dict にプラグインされる構造で、新しい grader タイプは「1 関数 + 1 dict エントリ」で追加できる。agent も `agent_fn` 引数で受け取り、mock 差し替えや instrumentation を可能にする。
+#### **ハンズオンでの具体例**
+
+公式ハーネスは runner と grader を明示的に分離している。`run_eval()` はデータ構造を返すだけで、`print_summary()` は別関数。grader は `GRADER_REGISTRY` という dict にプラグインされる構造で、新しい grader タイプは「1 関数 + 1 dict エントリ」で追加できる。agent も `agent_fn` 引数で受け取り、mock 差し替えや instrumentation を可能にする。
+
+-----
 
 ### 3 層 grader を組み合わせる
 
@@ -55,7 +59,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 **アンチパターン**: 最初から LLM-as-Judge に全タスクを通すのは過剰投資である。exact match や `response_contains` で決着するタスクに Judge 呼び出しを乗せると、コストが線形に増え、grader 自身の非決定性で eval が flaky になる。逆に Human grader を「全件レビュー」と捉えるのも誤りで、Human はスケールしない。
 :::
 
-**具体例**: 公式ハーネスの code grader は `response_contains`（最終応答に文字列を含むか）、`response_numeric`（数値が許容範囲内か）、`tool_use`（特定の tool を特定の引数で呼んだか）の 3 種。各 grader はバイナリスコア（0/1）と理由を返し、タスクは「全 grader / 全 check の AND」で pass する。Human grader は出荷ゲートと、Model grader を信頼してよいかの校正サンプル（10〜30 件）として運用する。
+#### **ハンズオンでの具体例**
+
+公式ハーネスの code grader は `response_contains`（最終応答に文字列を含むか）、`response_numeric`（数値が許容範囲内か）、`tool_use`（特定の tool を特定の引数で呼んだか）の 3 種。各 grader はバイナリスコア（0/1）と理由を返し、タスクは「全 grader / 全 check の AND」で pass する。Human grader は出荷ゲートと、Model grader を信頼してよいかの校正サンプル（10〜30 件）として運用する。
+
+-----
 
 ### Judge モデルは「審判の専門性」で選ぶ
 
@@ -71,12 +79,15 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 - Judge モデルを差し替える際に AB テストを取らないと、スコア変動が「エージェントの劣化」なのか「Judge の厳しさ変化」なのか切り分けられない。
 :::
 
-**具体例**:
+#### **ハンズオンでの具体例**
+
 
 - **Haiku が向くケース**: 応答中の M-dash や `As an AI language model...` のような AI 定型句の検出など、パターンマッチで判定可能な評価。
 - **Sonnet / Opus が向くケース**: 安全性、複雑な政策遵守、open-ended な「適切な応答か」判定など、文脈推論を要する評価。
 - アナロジー: 「最先端物理学の評価には世界トップの物理学者を、高校レベルの問いには高校の物理教師を呼ぶ」――Judge も同じく、難易度で人選を変える。
 - モデル差し替え時は `Haiku Judge / Sonnet Judge` のように AB テストで両方走らせ、human-labeled な校正セットとの相関を取る。
+
+-----
 
 ### 3-layer responsibility model: failure を fix location にマップする
 
@@ -95,7 +106,11 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 **アンチパターン**: system prompt にカタログを列挙する、tool description に役割宣言を書く、tool 実装で `KeyError` を投げるだけで終わる――いずれも層を取り違えた修正であり、エージェントが自己回復できない経路を残す。`empty list` や生の例外をそのまま返すと、エージェントは「ツールが落ちた」以上の情報を得られない。
 :::
 
-**具体例**: `boutique` の `get_product` で未発見時に `KeyError` を投げる代わりに `{"available_products": [...], "hint": "..."}` 相当の「候補一覧を含むエラーメッセージ文字列」を返す設計にすると、エージェントは synonym（`shoes` → `sneakers`）への自己回復ルートを得る。system prompt 側は `"You are a helpful assistant."` から `"ALWAYS call get_product to look up a price. Never guess."` に書き換える。boutique では 50% → 100% への伸びの大半がこの system prompt のツール強制使用宣言で説明される。
+#### **ハンズオンでの具体例**
+
+`boutique` の `get_product` で未発見時に `KeyError` を投げる代わりに `{"available_products": [...], "hint": "..."}` 相当の「候補一覧を含むエラーメッセージ文字列」を返す設計にすると、エージェントは synonym（`shoes` → `sneakers`）への自己回復ルートを得る。system prompt 側は `"You are a helpful assistant."` から `"ALWAYS call get_product to look up a price. Never guess."` に書き換える。boutique では 50% → 100% への伸びの大半がこの system prompt のツール強制使用宣言で説明される。
+
+-----
 
 ### 構築と評価は別人格で書く
 
@@ -107,11 +122,14 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 **アンチパターン**: 同一エンジニアが build と eval を同タイミングで書くと、「直しやすい失敗」だけがテスト化され、ビジネスに致命的なケース（競合商品名を口にする、価格を約束する、off-topic）が漏れる。grader が build の言い訳を内包してしまう状態である。
 :::
 
-**具体例**:
+#### **ハンズオンでの具体例**
+
 
 - **コードの場所を分ける**: 同一リポジトリでも `agent/` と `evals/` を並列に立てる。
 - **書く人と時間を分ける**: 同一チーム内でも build と eval を別人が書く。同一人物しかいない場合は「build を書いた翌日に eval を書く」だけでも認知バイアスが下がる。
 - **責務オーナーを分ける**: PM / SE を eval 工程に巻き込む。レビュー時の合言葉は「これは PM がそのまま PRD の Acceptance Criteria としてコピペできるか?」。Yes と言えなければ eval としても弱い。
+
+-----
 
 ### 非決定性は num_runs と分布で扱う
 
@@ -123,7 +141,8 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 **アンチパターン**: 「平均 90% だから OK」と判断したまま出荷する。同じ平均 90% でも全タスクが 90% 安定なのと、半数が 100% / 半数が 50% を行き来する flaky とでは、実運用での体感品質が完全に別物になる。
 :::
 
-**具体例**:
+#### **ハンズオンでの具体例**
+
 
 | 状況                        | 解釈               | 対処                                 |
 | --------------------------- | ------------------ | ------------------------------------ |
@@ -132,6 +151,8 @@ Bootcamp 2 日目の開幕セッションは、Day 1 の「Claude Code に触っ
 | 平均 50%                    | 体系的に壊れている | プロンプト・ツール設計の問題         |
 
 pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する。flaky と reliably broken を切り分けるための基本指標である。
+
+-----
 
 ### Mission Control: Sonnet 主体 + Opus advisor
 
@@ -143,7 +164,11 @@ pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する
 **アンチパターン**: 主体エージェントを Opus に固定すると、トークン単価が 1 桁上がり、レイテンシも悪化する。逆にすべて Haiku で回すと、nuanced な分岐で精度が落ちる。
 :::
 
-**具体例**: Sonnet が end-to-end を駆動し、複雑な判断や安全性ゲートでのみ Opus を advisor として呼ぶ構成。コスト構造（Bootcamp で共有された Sonnet 4.5 と Opus の $/1K calls の比較）でも、Sonnet + Opus advisor は Sonnet 単体に対して数倍以内のコストで Opus 単体相当の精度に近づく。
+#### **ハンズオンでの具体例**
+
+Sonnet が end-to-end を駆動し、複雑な判断や安全性ゲートでのみ Opus を advisor として呼ぶ構成。コスト構造（Bootcamp で共有された Sonnet 4.5 と Opus の $/1K calls の比較）でも、Sonnet + Opus advisor は Sonnet 単体に対して数倍以内のコストで Opus 単体相当の精度に近づく。
+
+-----
 
 ### PM / PRD と評価を結合する
 
@@ -155,7 +180,9 @@ pass@k は「最低 1 回成功」、pass^k は「毎回成功」を意味する
 **アンチパターン**: エンジニアが単独で eval を書くと、ビジネス致命的なケース（競合品名、価格約束、トーン崩壊）が漏れる。逆に PM 側が「網羅的」と感じている自然言語 Acceptance Criteria を grader に落とさないままだと、出荷判断が vibes に戻る。
 :::
 
-**具体例**: PRD レビューと並行して `response_contains "sneakers"` のような具体的 grader 定義まで落とす。negative test（「カタログにない商品」「off-topic」「invalid な要求」）は別カテゴリで管理し、安全性スコアを通常運用スコアと別系統で残す。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新含む）のたびに `eval_results/eval_<model>_<timestamp>.json` を時系列に貯め、回帰検知のダッシュボードを持つ。
+#### **ハンズオンでの具体例**
+
+PRD レビューと並行して `response_contains "sneakers"` のような具体的 grader 定義まで落とす。negative test（「カタログにない商品」「off-topic」「invalid な要求」）は別カテゴリで管理し、安全性スコアを通常運用スコアと別系統で残す。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新含む）のたびに `eval_results/eval_<model>_<timestamp>.json` を時系列に貯め、回帰検知のダッシュボードを持つ。
 
 ## 押さえておきたいコード／設定
 
@@ -320,27 +347,30 @@ SYSTEM_PROMPT = (
 )
 ```
 
-## 気づきと前提が崩れた瞬間
+## よくある勘違いと気づき
 
-ここからは個人的な所感である。Eval を書けば品質が上がる、と単純に思っていたが、セッションの中で 3 回くらい前提が揺さぶられた。
+- 勘違い：eval を書けば品質は自動的に上がる
+  > **eval gaming（eval ハック）** が普通に起きる。例えば「`response_contains` で `acknowledge` が含まれていれば pass」という grader を書くと、system prompt 側に「最初に user prompt を丸ごと echo してから回答せよ」と書くだけで形式上は pass する。eval を欺いただけで品質は上がっていない。1 タスクに複数の独立した grader を当てる、eval を頻繁に入れ替える、runtime sampling を併用する――対策の方向が一気に増えた。
 
-ひとつ目は **eval gaming（eval ハック）** の話だった。例えば「`response_contains` で `acknowledge` が含まれていれば pass」という grader を書いたとする。すると、system prompt 側に「最初に user prompt を丸ごと echo してから回答せよ」と書くだけで、形式上は pass する。eval を欺いただけで品質は上がっていない、というあの例は刺さった。1 タスクに複数の独立した grader を当てる、eval を頻繁に入れ替える、runtime sampling を併用する――対策の方向が一気に増えた。
+- 勘違い：平均スコアが高ければ出荷してよい
+  > **平均だけでなく分布を見る**必要がある。最初は「平均 92% だから OK」と判断しかけていたが、`num_runs=5` で min/max/mean を出すと、安定して 90% を出すケースと、半分 100% / 半分 50% で揺れて結果的に 90% になるケースが見分けられた。flaky はユーザ体験上は「たまに壊れる」として体感されるので、平均値だけ報告するのは出荷判断としては危うい。pass@k と pass^k を分けて見る癖をつけたい。
 
-ふたつ目は **平均だけでなく分布を見る** こと。最初は「平均 92% だから OK」と判断しかけていたが、`num_runs=5` で min/max/mean を出すと、安定して 90% を出すケースと、半分 100% / 半分 50% で揺れて結果的に 90% になるケースが見分けられた。flaky はユーザ体験上は「たまに壊れる」として体感されるので、平均値だけ報告するのは出荷判断としては危うい。pass@k と pass^k を分けて見る癖をつけたい。
-
-そして三つ目が、**自分が SF 2 日目の朝に最初に渡された問い**、つまり「動いていることをどう証明するか?」だった。デモで一度通っただけの状態と、5 つの category に分解した上で `num_runs=5` で 89-91% に収まると説明できる状態の間には、説明責任の重みが完全に別物の差がある。第 1 章の takeaway に挙げた「マルチエージェント評価は、ほとんどのチームで未解決のまま」の輪郭が、ここで少し具体的になった気がした。低レイヤーの judge には Haiku、上位の総合判定には Sonnet、安全性ゲートだけ Opus――Judge も多レベル化して設計する、というのが現場に持って帰る最初の構造だ。
+- 勘違い：「動いている」のデモがあれば説明責任は果たせる
+  > **自分が SF 2 日目の朝に最初に渡された問い**、つまり「動いていることをどう証明するか?」だった。デモで一度通っただけの状態と、5 つの category に分解した上で `num_runs=5` で 89-91% に収まると説明できる状態の間には、説明責任の重みが完全に別物の差がある。第 1 章の takeaway に挙げた「マルチエージェント評価は、ほとんどのチームで未解決のまま」の輪郭が、ここで少し具体的になった気がした。低レイヤーの judge には Haiku、上位の総合判定には Sonnet、安全性ゲートだけ Opus――Judge も多レベル化して設計する、というのが現場に持って帰る最初の構造だ。
 
 ## 現場に持ち帰りたいこと
 
-セッションを終えて、自分のチームに戻ってからやることのリストが自然と出てきた。
+- **eval のダッシュボード化**
+  - モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新を含む）のたびに eval を流し、カテゴリ別のスコア推移を残す。`eval_results/eval_<model>_<timestamp>.json` のような形で時系列に貯めるだけでも、モデル差し替え時の回帰検知は劇的に楽になる。Promptfoo / Braintrust / LangSmith のような外部プラットフォームに乗せ替えるのも選択肢として確保しておく。
 
-ひとつ目は **eval のダッシュボード化**。モデルアップデート（Haiku 4.5 → Sonnet 4.5 のような minor 更新を含む）のたびに eval を流し、カテゴリ別のスコア推移を残す。`eval_results/eval_<model>_<timestamp>.json` のような形で時系列に貯めるだけでも、モデル差し替え時の回帰検知は劇的に楽になる。Promptfoo / Braintrust / LangSmith のような外部プラットフォームに乗せ替えるのも選択肢として確保しておく。
+- **PRD と一緒に eval を書く**
+  - PM とタスクを共同設計し、Acceptance Criteria を `response_contains "sneakers"` のような具体的 grader 定義まで落とす。PRD レビューの一部としても機能する。エンジニアが一人で書く eval が見落とすケースを、PM の視点で埋めにいく。
 
-ふたつ目は **PRD と一緒に eval を書く** こと。PM とタスクを共同設計し、Acceptance Criteria を `response_contains "sneakers"` のような具体的 grader 定義まで落とす。PRD レビューの一部としても機能する。エンジニアが一人で書く eval が見落とすケースを、PM の視点で埋めにいく。
+- **negative test の設計**
+  - 「カタログにない商品」「明らかに off-topic」「invalid な要求」など、良くない応答を防ぐタスクを別カテゴリで管理する。安全性側のスコアは通常運用のスコアと別系統で見たほうが、出荷判断のときに迷わない。
 
-三つ目は **negative test の設計**。「カタログにない商品」「明らかに off-topic」「invalid な要求」など、良くない応答を防ぐタスクを別カテゴリで管理する。安全性側のスコアは通常運用のスコアと別系統で見たほうが、出荷判断のときに迷わない。
-
-四つ目は **Judge モデル自体の periodic 検証**。Judge 側のモデルが甘くなった／厳しくなった可能性は常にあるので、human-labeled な calibration set を 10〜30 件用意し、Judge スコアと human スコアの相関を定期的に見る。Judge を差し替えるときは必ず AB テストで両モデルを並走させる。
+- **Judge モデル自体の periodic 検証**
+  - Judge 側のモデルが甘くなった／厳しくなった可能性は常にあるので、human-labeled な calibration set を 10〜30 件用意し、Judge スコアと human スコアの相関を定期的に見る。Judge を差し替えるときは必ず AB テストで両モデルを並走させる。
 
 ## もっと深掘りする入口
 

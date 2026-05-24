@@ -39,7 +39,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 **アンチパターン**: ループ脱出条件をターン数や時間に置く実装。Claude は途中で「もう一段ツールを呼びたい」と判断する場合があり、`stop_reason` 以外で打ち切ると tool call が宙に浮き、次ターンに整合性エラーを返す。
 :::
 
-**ハンズオンでの具体例**: ノートブック Part 1 の `run_agent()` は、`max_tokens=32000`・`thinking={"type": "adaptive"}` を全コールに渡し、`while response.stop_reason == "tool_use":` 直下で `tool_result` を組み立てる。`tool_result` の `tool_use_id` には **`block.id`（受信した `ToolUseBlock` の id）** を必ず入れる。これがないと API がエラーで弾く。
+#### **ハンズオンでの具体例**
+
+ノートブック Part 1 の `run_agent()` は、`max_tokens=32000`・`thinking={"type": "adaptive"}` を全コールに渡し、`while response.stop_reason == "tool_use":` 直下で `tool_result` を組み立てる。`tool_result` の `tool_use_id` には **`block.id`（受信した `ToolUseBlock` の id）** を必ず入れる。これがないと API がエラーで弾く。
+
+-----
 
 ### 思考モードと effort は粒度を分ける
 
@@ -51,7 +55,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 **アンチパターン**: 本番系で常に `effort="max"` や `xhigh` を貼る。レスポンス時間とトークン課金が数倍〜十数倍に膨らみ、500 件/日のスケールで経済合理性が崩壊する。逆に、曖昧チケットを `low` に固定すると、必要な仮説立てが行われずミスエスカレーションが増える。`high` をデフォルトと知らずに「念のため `xhigh`」を貼るのも、Sonnet 系では無効な値で実行時エラーになる罠がある（`xhigh` は Opus 4.7 限定）。
 :::
 
-**ハンズオンでの具体例**: Part 2 の `run_agent_thinking()` は同一チケット `TKT-1046`（Singapore 拠点・15% の API が間欠 500）を `high` と `low` で連投する。`high` の思考トレースには「Singapore region routing degradation の可能性」「retry-success の頻度が rate limit パターンと一致しない」といった仮説が立つ一方、`low` ではほぼ言及されない。経過時間も `high≈22s` / `low≈19s` と差が出る。Opus 4.7 で実運用に持ち上げるなら、複雑チケットを `xhigh`、単純チケットを `medium`〜`low` にルーティングするのが筋の良い設計になる。
+#### **ハンズオンでの具体例**
+
+Part 2 の `run_agent_thinking()` は同一チケット `TKT-1046`（Singapore 拠点・15% の API が間欠 500）を `high` と `low` で連投する。`high` の思考トレースには「Singapore region routing degradation の可能性」「retry-success の頻度が rate limit パターンと一致しない」といった仮説が立つ一方、`low` ではほぼ言及されない。経過時間も `high≈22s` / `low≈19s` と差が出る。Opus 4.7 で実運用に持ち上げるなら、複雑チケットを `xhigh`、単純チケットを `medium`〜`low` にルーティングするのが筋の良い設計になる。
+
+-----
 
 ### `format` (JSON schema) は最終 call でのみ使う
 
@@ -63,7 +71,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 **アンチパターン**: ループ中の API コールに `format` を入れる。`tool_use` を返したいタイミングで「テキストは JSON でなければならない」と引っ張られ、ツール呼び出しが壊れる。スキーマで `additionalProperties` を省略するのも罠で、Claude が定義外のフィールドを生やして下流のパースが死ぬ。
 :::
 
-**ハンズオンでの具体例**: Part 1 後半の `run_agent_structured()` は、ツールループ中は `output_config` を渡さず、ループ後に `messages` へ "Provide your structured resolution as JSON." を追加し、**1 度だけ** `output_config={"format": RESOLUTION_SCHEMA}` と `tool_choice={"type": "none"}` を併用して構造化 JSON を取り出す。スキーマには `additionalProperties: False` を必ず入れる。`tool_choice` の取りうる値は `none` / `auto` / `any` / `{"type": "tool", "name": ...}` の 4 種で、最終 call では `none` を明示する。
+#### **ハンズオンでの具体例**
+
+Part 1 後半の `run_agent_structured()` は、ツールループ中は `output_config` を渡さず、ループ後に `messages` へ "Provide your structured resolution as JSON." を追加し、**1 度だけ** `output_config={"format": RESOLUTION_SCHEMA}` と `tool_choice={"type": "none"}` を併用して構造化 JSON を取り出す。スキーマには `additionalProperties: False` を必ず入れる。`tool_choice` の取りうる値は `none` / `auto` / `any` / `{"type": "tool", "name": ...}` の 4 種で、最終 call では `none` を明示する。
+
+-----
 
 ### Tool description は呼ばれ方を決める
 
@@ -75,7 +87,11 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 **アンチパターン**: 「Search the knowledge base.」のような事務的な 1 行で済ませる。Claude は「順序」「前提」「不可ケース」を読み取れず、`get_ticket` を飛ばして `search_kb` をいきなり呼ぶ、解決前に `resolve_ticket` を打つ、といった経路を取りはじめる。
 :::
 
-**ハンズオンでの具体例**: ノートブックの `search_kb` description は "Use this to find troubleshooting steps, policies, or known solutions **before attempting to resolve a ticket.**" と **順序のヒント** が埋まっている。`resolve_ticket` の `status` プロパティは `enum: ["resolved", "escalated", "closed"]` と値域を絞り、description で `resolved = fix applied; escalated = needs Tier 2; closed = duplicate or invalid` と意味を明示している。これにより Claude のツール選択がほぼブレない。
+#### **ハンズオンでの具体例**
+
+ノートブックの `search_kb` description は "Use this to find troubleshooting steps, policies, or known solutions **before attempting to resolve a ticket.**" と **順序のヒント** が埋まっている。`resolve_ticket` の `status` プロパティは `enum: ["resolved", "escalated", "closed"]` と値域を絞り、description で `resolved = fix applied; escalated = needs Tier 2; closed = duplicate or invalid` と意味を明示している。これにより Claude のツール選択がほぼブレない。
+
+-----
 
 ### Content block を取りこぼさない
 
@@ -87,7 +103,8 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 **アンチパターン**: `text` だけ・`tool_use` だけを抽出して `messages` に積む。adaptive thinking 有効時には必ず壊れる。また、最終の構造化 JSON を取り出すときに `content[0]` を見る実装も罠で、`[ThinkingBlock, TextBlock]` の並びだと JSON は **末尾の TextBlock** に入る。
 :::
 
-**ハンズオンでの具体例**:
+#### **ハンズオンでの具体例**
+
 
 ```python
 # NG: thinking を捨てて積み戻す
@@ -104,6 +121,8 @@ data = json.loads(text_blocks[-1].text)
 
 `ToolUseBlock` の `block.id` は対応する `tool_result.tool_use_id` と一対一で紐付く。`block.name` / `block.input` (dict) でツール呼び出し本体を取り出す。
 
+-----
+
 ### Streaming は UX 改善メトリクスである
 
 :::message
@@ -114,7 +133,11 @@ data = json.loads(text_blocks[-1].text)
 **アンチパターン**: ストリーミングをトークン節約や速度短縮の手段だと誤解すること。実体は UX 上の体感改善 ── 「2 段落待たせる」のではなく「1 文ずつ流れる」 ── であって、レイテンシ自体は短くならない。また、ストリーム中に `block.input` を読もうとしても、ツール引数 JSON は `get_final_message()` 呼び出し後に確定するため、ストリーム終了前のアクセスは不完全な値を返す。
 :::
 
-**ハンズオンでの具体例**: Part 3 の `run_agent_streaming()` では `content_block_start` で `block.type` を見て `[Thinking]` / `[Tool: name]` / `[Response]` のラベルを切り替え、`content_block_delta` の 3 種 delta をそれぞれ `flush=True` で書き出す。最終構造化出力もストリームで取り、`text_delta` だけを画面に流す。
+#### **ハンズオンでの具体例**
+
+Part 3 の `run_agent_streaming()` では `content_block_start` で `block.type` を見て `[Thinking]` / `[Tool: name]` / `[Response]` のラベルを切り替え、`content_block_delta` の 3 種 delta をそれぞれ `flush=True` で書き出す。最終構造化出力もストリームで取り、`text_delta` だけを画面に流す。
+
+-----
 
 ### クライアント側の地味な落とし穴
 
@@ -130,7 +153,9 @@ data = json.loads(text_blocks[-1].text)
 - 1 年前のプロンプト・スキル定義を新モデルに使い回す（旧モデル向けの「最も賢い存在として振る舞え」「役割を与える」式のメタ指示は、新モデルではノイズになる場合がある）。
 :::
 
-**ハンズオンでの具体例**: ノートブック冒頭で `anthropic.Anthropic(timeout=900.0)` と明示している。API キーは `os.environ["ANTHROPIC_API_KEY"]` 経由で読み、`client.messages.create()` の `model` には `MODEL = "claude-sonnet-4-6"` を渡す。Setup セルは接続確認 (`Reply with only: ready`) と SDK バージョン表示を兼ねており、これを毎回最初に走らせるとデバッグが楽になる。
+#### **ハンズオンでの具体例**
+
+ノートブック冒頭で `anthropic.Anthropic(timeout=900.0)` と明示している。API キーは `os.environ["ANTHROPIC_API_KEY"]` 経由で読み、`client.messages.create()` の `model` には `MODEL = "claude-sonnet-4-6"` を渡す。Setup セルは接続確認 (`Reply with only: ready`) と SDK バージョン表示を兼ねており、これを毎回最初に走らせるとデバッグが楽になる。
 
 ## 押さえておきたいコード／設定
 
@@ -295,31 +320,39 @@ data = json.loads(text_blocks[-1].text)
 
 ## よくある勘違いと気づき
 
-- **「思考ブロックは next call に渡さなくていい」と思っていた** が、これは違った。`ThinkingBlock` は `text` や `tool_use` と一緒に **そのまま** 次の `messages` に積まないと整合性エラーで弾かれる。サーバ側に「思考の連続性」という状態があると知って、ようやく adaptive thinking の手触りが掴めた。
+- 勘違い：思考ブロックは next call に渡さなくていい
+  > `ThinkingBlock` は `text` や `tool_use` と一緒に **そのまま** 次の `messages` に積まないと整合性エラーで弾かれる。サーバ側に「思考の連続性」という状態があると知って、ようやく adaptive thinking の手触りが掴めた。
 
-- **「`effort="high"` にしておけば安心」と思っていた** が、これも違った。`high` は確かに深く考えてくれるが、レスポンス時間とトークン課金が膨らむ。請求の二重課金のような単純チケットは `low` で十分捌け、API 間欠障害のような曖昧チケットでのみ `high` に振る、というルーティングが現実解になる。`TKT-1046` を `low` と `high` で並べて投げた瞬間、`high` 側のトレースに "Singapore region routing issue" の仮説が立っているのを見て、「これは確かに `high` が要る」と腹落ちした。
+- 勘違い：`effort="high"` にしておけば安心
+  > `high` は確かに深く考えてくれるが、レスポンス時間とトークン課金が膨らむ。請求の二重課金のような単純チケットは `low` で十分捌け、API 間欠障害のような曖昧チケットでのみ `high` に振る、というルーティングが現実解になる。`TKT-1046` を `low` と `high` で並べて投げた瞬間、`high` 側のトレースに "Singapore region routing issue" の仮説が立っているのを見て、「これは確かに `high` が要る」と腹落ちした。
 
-そして workshop の素材では `high` / `medium` / `low` の 3 段階で説明されていたが、章をまとめる段でドキュメントを引き直してみると、実は **`low` / `medium` / `high` / `xhigh` / `max` の 5 段階** が正しい仕様だった。**API デフォルトは `high`**（パラメータ省略時と同じ）で、`xhigh` は Opus 4.7 専用の拡張レベル、`max` は Opus 4.6 / 4.7 と Sonnet 4.6 で使える絶対最大。Anthropic は Opus 4.7 のコーディングや長時間のエージェントタスクでは `xhigh` から始めることを推奨している。3 段階で思考停止していると、最も「考えさせる」ための引き出しを 2 つも見逃していたわけで、モデル世代と一緒に effort の階層ごと読み直す対象なのだと、ここでもう一度突きつけられた。
+- 勘違い：effort は `high` / `medium` / `low` の 3 段階だけ
+  > workshop の素材では 3 段階で説明されていたが、章をまとめる段でドキュメントを引き直してみると、実は **`low` / `medium` / `high` / `xhigh` / `max` の 5 段階** が正しい仕様だった。**API デフォルトは `high`**（パラメータ省略時と同じ）で、`xhigh` は Opus 4.7 専用の拡張レベル、`max` は Opus 4.6 / 4.7 と Sonnet 4.6 で使える絶対最大。Anthropic は Opus 4.7 のコーディングや長時間のエージェントタスクでは `xhigh` から始めることを推奨している。3 段階で思考停止していると、最も「考えさせる」ための引き出しを 2 つも見逃していたわけで、モデル世代と一緒に effort の階層ごと読み直す対象なのだと、ここでもう一度突きつけられた。
 
-- **「`output_config.format` は最初から付けっぱなしでよさそう」と思っていた** が、一番派手にハマるパターンらしい。`format` は **すべてのテキスト出力に効く** ので、ツールループ中に有効化すると `tool_use` を返したいタイミングで Claude が引っ張られ、ツール呼び出しが壊れる。**ループ中は `effort` だけ、最終 call でだけ `format` + `tool_choice={"type": "none"}`**、というのが鉄則になった。
+- 勘違い：`output_config.format` は最初から付けっぱなしでよさそう
+  > `format` は **すべてのテキスト出力に効く** ので、ツールループ中に有効化すると `tool_use` を返したいタイミングで Claude が引っ張られ、ツール呼び出しが壊れる。**ループ中は `effort` だけ、最終 call でだけ `format` + `tool_choice={"type": "none"}`**、というのが鉄則になった。
 
-- **「`response.content` の最初の text ブロックを読めばよい」と思っていた** が、これも罠だった。adaptive thinking 有効時は `[ThinkingBlock, TextBlock, ...]` の並びで返り、JSON は **最後の** TextBlock に入る。`content[0]` を見にいくと、`thinking` の手前にある中間テキストを掴んでしまうことがある。
+- 勘違い：`response.content` の最初の text ブロックを読めばよい
+  > adaptive thinking 有効時は `[ThinkingBlock, TextBlock, ...]` の並びで返り、JSON は **最後の** TextBlock に入る。`content[0]` を見にいくと、`thinking` の手前にある中間テキストを掴んでしまうことがある。
 
-> Q&A の流れで一つ印象に残った言葉がある。**「モデルが新しくなるたびに、CLAUDE.md やスキルを見直す癖を持つこと」** ── 1 年前のプロンプトは 1 年前のモデル向けに最適化されている。「役割を与える」「最も賢い存在として振る舞え」のような古い手癖は、今のモデルではむしろノイズになる。Messages API のループも同じで、SDK バージョンと一緒に **`thinking` / `output_config` / `tool_choice` の前提を毎リリース読み直す** 対象だと思うようになった。
+- 勘違い：CLAUDE.md やスキルは 1 回書いたら終わり
+  > Q&A の流れで一つ印象に残った言葉があった ── **「モデルが新しくなるたびに、CLAUDE.md やスキルを見直す癖を持つこと」**。1 年前のプロンプトは 1 年前のモデル向けに最適化されている。「役割を与える」「最も賢い存在として振る舞え」のような古い手癖は、今のモデルではむしろノイズになる。Messages API のループも同じで、SDK バージョンと一緒に **`thinking` / `output_config` / `tool_choice` の前提を毎リリース読み直す** 対象だと思うようになった。
 
 ## 現場に持ち帰りたいこと
 
-- **3 層責務モデルで「指示の置き場所」を分ける。** エージェントの挙動を決める指示は 3 つの層に分けると整理しやすい。
+- **3 層責務モデルで「指示の置き場所」を分ける**
+  - エージェントの挙動を決める指示は 3 つの層に分けると整理しやすい。
 
-| 層                   | 何を書くか                                               |
-| -------------------- | -------------------------------------------------------- |
-| **System Prompt**    | エージェントのロール・SLA・エスカレーション基準          |
-| **Tool description** | そのツールを **いつ** 呼ぶか、入力の妥当性               |
-| **Tool 実装**        | 安全網。不正入力の弾き返し、ヒットなし時のフォールバック |
+  | 層                   | 何を書くか                                               |
+  | -------------------- | -------------------------------------------------------- |
+  | **System Prompt**    | エージェントのロール・SLA・エスカレーション基準          |
+  | **Tool description** | そのツールを **いつ** 呼ぶか、入力の妥当性               |
+  | **Tool 実装**        | 安全網。不正入力の弾き返し、ヒットなし時のフォールバック |
 
-すべて system prompt に詰め込む実装が多いが、ツール選択の不具合は tool description に書くべきだし、「ヒットなし=エスカレーション候補」のような **次の手のヒント** はツール実装の戻り値（KB-000 の "Consider escalating to Tier 2 support." など）に埋めるべきだ。講師が繰り返した「ほとんどの AI システム障害はモデル問題ではなく prompt・agent 構成・tool 設計の問題である」という言葉は、この 3 層を意識すると具体的に効いてくる。
+  - すべて system prompt に詰め込む実装が多いが、ツール選択の不具合は tool description に書くべきだし、「ヒットなし=エスカレーション候補」のような **次の手のヒント** はツール実装の戻り値（KB-000 の "Consider escalating to Tier 2 support." など）に埋めるべきだ。講師が繰り返した「ほとんどの AI システム障害はモデル問題ではなく prompt・agent 構成・tool 設計の問題である」という言葉は、この 3 層を意識すると具体的に効いてくる。
 
-- **`effort=high` と `effort=low` を並べて投げる、をデバッグ手段にする。** 同じチケットを両方の effort で実行し、思考トレースを横に並べると、Claude が何を見て何を判断したかが読める。`high` でしか拾えない仮説があるなら、その種のチケットだけ `high` にルーティングする ── というのは triage の本番設計だけでなく、エージェント開発中のデバッグツールとしても優秀だった。
+- **`effort=high` と `effort=low` を並べて投げる、をデバッグ手段にする**
+  - 同じチケットを両方の effort で実行し、思考トレースを横に並べると、Claude が何を見て何を判断したかが読める。`high` でしか拾えない仮説があるなら、その種のチケットだけ `high` にルーティングする ── というのは triage の本番設計だけでなく、エージェント開発中のデバッグツールとしても優秀だった。
 
 ## もっと深掘りする入口
 

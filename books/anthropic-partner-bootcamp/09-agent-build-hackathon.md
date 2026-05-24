@@ -44,7 +44,9 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: 実装してから「テストでも書くか」と eval を後追いで作る。この順序では eval が「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。
 :::
 
-**具体例**: 配布された 5 つの Pressure Test と各々の failure signature は以下の通り。
+#### **ハンズオンでの具体例**
+
+配布された 5 つの Pressure Test と各々の failure signature は以下の通り。
 
 | パターン | 意図 | 「良い」挙動 |
 | --- | --- | --- |
@@ -53,6 +55,8 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 | **Hallucination trap** | KB に存在しないトピック（例: Kubernetes runtime protection） | confidence=low、`no KB coverage` フラグ、CNI 名などを捏造しない |
 | **Negation / false-premise** | 「データを region 外に出さないことを確認してください」 | KB の region 内主張を確認しつつ、support/telemetry 例外が未文書化であることを明示 |
 | **Consistency review habit** | 過去回答（Q2）への参照 + KB に無い air-gapped | DHS sponsorship を答えつつ、air-gapped を `not documented` として切り出す |
+
+-----
 
 ### Surprise RFP で generalization を測る
 
@@ -64,7 +68,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: 開発用 RFP で 95% を達成して完成宣言する。開発時に観測した failure mode しか防御できていない可能性を切り分けられない。
 :::
 
-**具体例**: ノートブック Part 9 の Surprise RFP は配布されず、最終評価時に初めて与えられる。training と評価で入力が異なる場合にのみ、「ハードコードや暗黙の前提に依存していないか」を判定できる。
+#### **ハンズオンでの具体例**
+
+ノートブック Part 9 の Surprise RFP は配布されず、最終評価時に初めて与えられる。training と評価で入力が異なる場合にのみ、「ハードコードや暗黙の前提に依存していないか」を判定できる。
+
+-----
 
 ### 3-layer responsibility model を実装版に落とす
 
@@ -76,7 +84,9 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: 全ての制約をシステムプロンプトに集約する、または tool description にロール宣言まで書き込む。書く場所を間違えると、モデルが tool 選択を決める瞬間に必要な情報が文脈にない、あるいは tool エラーから回復する経路が欠ける、という形で効かない。
 :::
 
-**具体例**: RFP エージェントでの 3 層対応は以下の通り。
+#### **ハンズオンでの具体例**
+
+RFP エージェントでの 3 層対応は以下の通り。
 
 | 層 | 責務 | RFP エージェントでの例 |
 | --- | --- | --- |
@@ -91,6 +101,8 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 - ツールエラーから回復しない → tool 実装（説明的な戻り値）
 - 知識不足で間違える → tool description（カタログ等の文脈情報）
 
+-----
+
 ### Output contract を JSON で固定する
 
 :::message
@@ -101,7 +113,9 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: 自然言語の回答だけを返し、review・export 段階で再パースする。フィールドの欠落や形式ぶれが後段の処理を壊す。
 :::
 
-**具体例**: RFP エージェントの contract は以下の固定フィールドで構成する。
+#### **ハンズオンでの具体例**
+
+RFP エージェントの contract は以下の固定フィールドで構成する。
 
 - `question_id`: 質問の識別子
 - `category`: technical / compliance / pricing / company-info のいずれか
@@ -109,6 +123,8 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 - `sources`: `search_kb` が返した source ID のリスト
 - `confidence`: high / medium / low
 - `flags`: `"no_kb_coverage"` / `"false_premise"` などのフラグリスト
+
+-----
 
 ### Consistency reviewer を sub-agent として置く
 
@@ -120,7 +136,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: Draft エージェントに「整合性も気をつけて」と指示する。複数責務を 1 エージェントに混載すると「全体的に整合性は問題ないと思われます」のような無内容な肯定が返る。
 :::
 
-**具体例**: Reviewer の出力契約は status (`pass` / `flag`) と `contradiction_with_prior_id` の 2 フィールドを必須化する。引用できない矛盾はフラグできない、というルールを明示で渡すことで over-claim を構造的に防ぐ。
+#### **ハンズオンでの具体例**
+
+Reviewer の出力契約は status (`pass` / `flag`) と `contradiction_with_prior_id` の 2 フィールドを必須化する。引用できない矛盾はフラグできない、というルールを明示で渡すことで over-claim を構造的に防ぐ。
+
+-----
 
 ### Eval は accuracy / sources / consistency / calibration / edge cases / latency / cost で多軸化する
 
@@ -140,7 +160,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: accuracy だけで採点する。confidence calibration が壊れたエージェント（low と言うべき場面で high を返す）を検出できない。
 :::
 
-**具体例**: ノートブック Part 8 は 5 軸 assertion を Part 5 の実装より前に書くタスクとして配置されている。実装後ではなく実装前に書くことで、eval は「望ましい挙動の定義」として機能する。
+#### **ハンズオンでの具体例**
+
+ノートブック Part 8 は 5 軸 assertion を Part 5 の実装より前に書くタスクとして配置されている。実装後ではなく実装前に書くことで、eval は「望ましい挙動の定義」として機能する。
+
+-----
 
 ### 3-line rule で回帰を防ぐ
 
@@ -152,7 +176,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: Surprise の段階でアーキテクチャを書き換える。開発用 RFP で動いていた挙動まで壊れ、改善ではなく回帰になる。
 :::
 
-**具体例**: Hallucination trap で失敗した場合の修正は、システムプロンプトに "If no matches, set confidence=low" を 1 行、tool description に "do NOT fabricate" を 1 行、tool 実装に `hint` フィールドを 1 行追加するに留める。
+#### **ハンズオンでの具体例**
+
+Hallucination trap で失敗した場合の修正は、システムプロンプトに "If no matches, set confidence=low" を 1 行、tool description に "do NOT fabricate" を 1 行、tool 実装に `hint` フィールドを 1 行追加するに留める。
+
+-----
 
 ### エージェントには Sonnet を基本に置く
 
@@ -164,7 +192,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: 全段に Opus を使う（コスト過剰）、または全段に Haiku を使う（マルチステージで失敗が連鎖する）。
 :::
 
-**具体例**: 第 8 章で観測された通り、Haiku は単純分類タスクで $0.35 / 1K calls、Opus は $20.10 / 1K calls。RFP の 5 段階パイプラインで Haiku を使うと各段の精度ロスが乗算で増幅し、Opus を使うとコスト構造が破綻する。Sonnet 4.5 が中間点として実用解になる。
+#### **ハンズオンでの具体例**
+
+第 8 章で観測された通り、Haiku は単純分類タスクで $0.35 / 1K calls、Opus は $20.10 / 1K calls。RFP の 5 段階パイプラインで Haiku を使うと各段の精度ロスが乗算で増幅し、Opus を使うとコスト構造が破綻する。Sonnet 4.5 が中間点として実用解になる。
+
+-----
 
 ### MVP と production agent の境界を意識する
 
@@ -176,7 +208,9 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 **アンチパターン**: 最初から Review + memory + compaction を組み込み、どの段が壊れているか切り分けられなくなる。
 :::
 
-**具体例**: ハッカソンの 60 分は MVP（Parse + Retrieve + Draft）+ Review までを射程とし、memory tool / compaction は別演習の領域とする。Production 投入時は Effective context engineering の文書化された 3 プリミティブ（tool result clearing / compaction / memory tool）を順に追加する。
+#### **ハンズオンでの具体例**
+
+ハッカソンの 60 分は MVP（Parse + Retrieve + Draft）+ Review までを射程とし、memory tool / compaction は別演習の領域とする。Production 投入時は Effective context engineering の文書化された 3 プリミティブ（tool result clearing / compaction / memory tool）を順に追加する。
 
 ## 押さえておきたいコード／設定
 
@@ -284,27 +318,36 @@ REVIEWER_OUTPUT_SCHEMA = {
 
 `status=flag` の場合は `contradiction_with_prior_id` を必ず埋める制約を schema 側で固定する。引用なしのフラグは契約違反として後段ではじける。
 
-## 気づきと前提が崩れた瞬間
+## よくある勘違いと気づき
 
 ここからは個人的な印象を含む。60 分のなかで自分の癖が立て続けに崩されたので書き残しておく。
 
-**「本物の統合」を作り込みたくなる癖**。Helios の本番想定は Confluence、Salesforce、SharePoint、社内 RAG が並ぶ世界で、それを 60 分で本物のコネクタとして繋ぎたい衝動が走った。ノートブックの KB はディクショナリのモックだが、考えてみると評価対象はエージェントの **インターフェースの正しさ** であって、バックエンドの実装ではない。実 KB に繋ぐのは本番投入の段階の話で、設計判断の検証にモックは十分だった。
+- 勘違い：「本物の統合」を 60 分で作り込むべきだ
+  > Helios の本番想定は Confluence、Salesforce、SharePoint、社内 RAG が並ぶ世界で、それを 60 分で本物のコネクタとして繋ぎたい衝動が走った。ノートブックの KB はディクショナリのモックだが、考えてみると評価対象はエージェントの **インターフェースの正しさ** であって、バックエンドの実装ではない。実 KB に繋ぐのは本番投入の段階の話で、設計判断の検証にモックは十分だった。
 
-**eval suite を後回しにする癖**。Part 8 の 5 軸 assertion は Part 5 の実装より先に書くべきものだったが、実装してから「テストでも書くか」と思いそうになった。その時点で eval は「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。第 5 章・第 6 章で扱った eval-driven の規律が、Surprise RFP の前で一番厳格に問われる場面だった。
+- 勘違い：eval suite は実装が動いてから書けばよい
+  > Part 8 の 5 軸 assertion は Part 5 の実装より先に書くべきものだったが、実装してから「テストでも書くか」と思いそうになった。その時点で eval は「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。第 5 章・第 6 章で扱った eval-driven の規律が、Surprise RFP の前で一番厳格に問われる場面だった。
 
-**1 つの回答を完璧にしようとして他を放置する癖**。「Q3 の Pricing 回答が citation 付きで返るようになった、これを磨こう」と詰めているうちに、Q1・Q2・Q4・Q5 のレビューが止まる。最適化対象は **全体スコアの distribution** であって個別回答ではない。20 問のうち 16 問が C+ なら、4 問を B+ にすることより、システムプロンプトに 1 行追加して全 20 問の底上げを狙うほうが優先度が高い。これを忘れがちなことを自覚した。
+- 勘違い：1 つの回答を完璧にすれば全体スコアも上がる
+  > 「Q3 の Pricing 回答が citation 付きで返るようになった、これを磨こう」と詰めているうちに、Q1・Q2・Q4・Q5 のレビューが止まる。最適化対象は **全体スコアの distribution** であって個別回答ではない。20 問のうち 16 問が C+ なら、4 問を B+ にすることより、システムプロンプトに 1 行追加して全 20 問の底上げを狙うほうが優先度が高い。これを忘れがちなことを自覚した。
 
-**3 層責務モデルが頭の中で腹落ちした瞬間**。第 4 章のショッピングアシスタント eval で 50% → 100% にジャンプした学びが、ここで「同じ責務を 3 箇所で重複防御する」のではなく「各層に異なる責務がある」という形で結晶化した。「うまく書く」のではなく「適切なレイヤーに書く」が判断軸だ、というのを自分のコードで体感した。
+- 勘違い：同じ責務を複数層で重複防御すれば安全になる
+  > 第 4 章のショッピングアシスタント eval で 50% → 100% にジャンプした学びが、ここで「同じ責務を 3 箇所で重複防御する」のではなく「各層に異なる責務がある」という形で結晶化した。「うまく書く」のではなく「適切なレイヤーに書く」が判断軸だ、というのを自分のコードで体感した。
 
 ## 現場に持ち帰りたいこと
 
 教室を出るとき、次のスプリントから実務でやるべきことが具体的に置き換わって見えた。
 
-- **PRD レベルから先に eval を書く**。第 6 章で扱った PM 巻き込みの話を、最初の 1 案件で必ず実践する。assertion は 7 軸（accuracy / sources / consistency / calibration / edge cases / latency / cost）で固定し、PRD の段階で PM・SE と一緒に書く。
-- **Pressure Test を最初に設計し、eval suite に組み込む**。Warm-up / Compound / Hallucination / Negation / Consistency review の 5 パターンを最初から組み込み、開発用入力で「成功している」挙動が未知入力で崩れる予兆を事前に検出する仕組みを持つ。
-- **3 行ルールで Surprise 失敗に対応する**。失敗を見たら、修正は 3 層に各 1 行 — システムプロンプト / tool description / tool 実装 — に抑え、それ以上の変更は別ブランチに切る。
-- **Sub-agent には verification 義務を必ず入れる**。Review エージェントには「矛盾を見つけたら、その矛盾の根拠を元回答の ID 引用と共に出力する。引用できないものはフラグしてはならない」と明示で渡す。これがないと無内容な肯定が返る。
-- **1 スプリント以内に短命で回す**。エージェントは tool 設計・プロンプト・KB の 3 点同時にチューニングするため、長寿命ブランチで複数変更を重ねると何がスコアに効いたか切り分けられなくなる。
+- **PRD レベルから先に eval を書く**
+  - 第 6 章で扱った PM 巻き込みの話を、最初の 1 案件で必ず実践する。assertion は 7 軸（accuracy / sources / consistency / calibration / edge cases / latency / cost）で固定し、PRD の段階で PM・SE と一緒に書く。
+- **Pressure Test を最初に設計し、eval suite に組み込む**
+  - Warm-up / Compound / Hallucination / Negation / Consistency review の 5 パターンを最初から組み込み、開発用入力で「成功している」挙動が未知入力で崩れる予兆を事前に検出する仕組みを持つ。
+- **3 行ルールで Surprise 失敗に対応する**
+  - 失敗を見たら、修正は 3 層に各 1 行 — システムプロンプト / tool description / tool 実装 — に抑え、それ以上の変更は別ブランチに切る。
+- **Sub-agent には verification 義務を必ず入れる**
+  - Review エージェントには「矛盾を見つけたら、その矛盾の根拠を元回答の ID 引用と共に出力する。引用できないものはフラグしてはならない」と明示で渡す。これがないと無内容な肯定が返る。
+- **1 スプリント以内に短命で回す**
+  - エージェントは tool 設計・プロンプト・KB の 3 点同時にチューニングするため、長寿命ブランチで複数変更を重ねると何がスコアに効いたか切り分けられなくなる。
 
 ## もっと深掘りする入口
 

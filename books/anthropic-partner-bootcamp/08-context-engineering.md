@@ -56,7 +56,11 @@ free: true
 **アンチパターン**。「念のため全部入れる」。retrieval も pre-filter も summarization も挟まず、生のドキュメントと履歴を丸ごと毎ターン同梱する設計。短期的には楽だが、context rot の影響を最も強く受ける。
 :::
 
-**具体例**。LongMemEval で 113K token の会話履歴を full で渡したケースと、関連ターンに絞った focused で渡したケースを比較すると、focused のほうが速く・安く・正確だった。「全部渡せば賢くなる」ではなく、「絞ったほうが賢くなる」が観測された一次データになる。
+#### **ハンズオンでの具体例**
+
+LongMemEval で 113K token の会話履歴を full で渡したケースと、関連ターンに絞った focused で渡したケースを比較すると、focused のほうが速く・安く・正確だった。「全部渡せば賢くなる」ではなく、「絞ったほうが賢くなる」が観測された一次データになる。
+
+-----
 
 ### Context rot は curve であって閾値ではない
 
@@ -68,7 +72,11 @@ free: true
 **アンチパターン**。「context window 上限まではフルに使ってよい」と前提を置くこと。劣化は容量を使い切る手前から始まる。
 :::
 
-**具体例**。Part 1 の Repeated Words は、推論を一切要しないただの複製タスクであるにもかかわらず、語数を 25 → 50 → 100 → 250 → 500 → 1000 → 2500 と振っていくと Levenshtein スコアが緩やかに落ちる。`apple` x500 個の中に 1 個だけ `apples` を混ぜて「そのまま写して」と命じても、長くなるにつれモデルは普通に `apple` に「直して」しまう。
+#### **ハンズオンでの具体例**
+
+Part 1 の Repeated Words は、推論を一切要しないただの複製タスクであるにもかかわらず、語数を 25 → 50 → 100 → 250 → 500 → 1000 → 2500 と振っていくと Levenshtein スコアが緩やかに落ちる。`apple` x500 個の中に 1 個だけ `apples` を混ぜて「そのまま写して」と命じても、長くなるにつれモデルは普通に `apple` に「直して」しまう。
+
+-----
 
 ### "Lost in the middle" は位置で殴る
 
@@ -80,7 +88,11 @@ free: true
 **アンチパターン**。長文の中盤に重要情報を埋めて、モデルが拾ってくれることを期待する設計。Chroma の grid を見れば、中盤が一番暗い帯になることが先に分かっている。
 :::
 
-**具体例**。Part 2 の NIAH ヒートマップで `needle_depth=25` `needle_depth=50` の行が、冒頭 (0%) や末尾 (100%) の行より明確に低い accuracy を示す。Anthropic Docs の [Long context tips](https://docs.anthropic.com/ja/docs/build-with-claude/prompt-engineering/long-context-tips) も「重要情報は末尾近くに置け」を明示している。
+#### **ハンズオンでの具体例**
+
+Part 2 の NIAH ヒートマップで `needle_depth=25` `needle_depth=50` の行が、冒頭 (0%) や末尾 (100%) の行より明確に低い accuracy を示す。Anthropic Docs の [Long context tips](https://docs.anthropic.com/ja/docs/build-with-claude/prompt-engineering/long-context-tips) も「重要情報は末尾近くに置け」を明示している。
+
+-----
 
 ### Prompt と Context Engineering は別スキル
 
@@ -92,7 +104,11 @@ free: true
 **アンチパターン**。「prompt を長く詳しく書く」ことを context engineering と呼ぶ。長い prompt は単に長い prompt であり、context rot を悪化させる側に効く。
 :::
 
-**具体例**。Prompt Engineering の延長で「指示と参照情報を全部 system prompt に詰める」と、毎ターンその全量がコンテキストを食い続ける。Context Engineering 視点では、参照情報は memory tool に逃がすか、retrieval で必要分のみ持ってくる構造に切り替える。
+#### **ハンズオンでの具体例**
+
+Prompt Engineering の延長で「指示と参照情報を全部 system prompt に詰める」と、毎ターンその全量がコンテキストを食い続ける。Context Engineering 視点では、参照情報は memory tool に逃がすか、retrieval で必要分のみ持ってくる構造に切り替える。
+
+-----
 
 ### 3 primitives は問題に応じて選ぶ
 
@@ -110,7 +126,11 @@ free: true
 **アンチパターン**。原因を見ずに「とりあえず compaction を入れる」「とりあえず memory tool を入れる」。tool 出力が暴れているのに compaction を入れても、要約結果がさらに暴れる。
 :::
 
-**具体例**。WebFetch や検索系ツールの raw HTML/JSON が会話履歴を肥大化させているケースは Tool result clearing が第一手。複数ターンにわたる雑談・前提共有で履歴が伸びているケースは Compaction。プロジェクトを跨いだユーザ嗜好の記憶などは Memory tool。
+#### **ハンズオンでの具体例**
+
+WebFetch や検索系ツールの raw HTML/JSON が会話履歴を肥大化させているケースは Tool result clearing が第一手。複数ターンにわたる雑談・前提共有で履歴が伸びているケースは Compaction。プロジェクトを跨いだユーザ嗜好の記憶などは Memory tool。
+
+-----
 
 ### Tool Result Clearing の設定項目
 
@@ -128,7 +148,8 @@ free: true
 **アンチパターン**。`exclude_tools` を指定せずに memory tool 等の「落としてはいけないツール出力」まで巻き込んで削除する。落とすべきは raw な検索結果や fetch 結果であって、永続化責務を持つツールの返り値ではない。
 :::
 
-**具体例**。
+#### **ハンズオンでの具体例**
+
 
 ```python
 context_management = {
@@ -142,6 +163,8 @@ context_management = {
 }
 ```
 
+-----
+
 ### Memory tool は外部ストレージ責務
 
 :::message
@@ -152,7 +175,11 @@ context_management = {
 **アンチパターン**。会話履歴を全部 memory に書き込む。memory はあくまで「セッションを跨いで残す必要があるもの」用であり、短期記憶の代替ではない。短期記憶は compaction が担う。
 :::
 
-**具体例**。ユーザの恒久的な嗜好（「敬語を使わない」「コードブロックには言語タグを付ける」）や、複数日にまたがるプロジェクト固有の前提を `create` / `str_replace` で更新する。1 ターン限定の検索結果は memory に書かない。
+#### **ハンズオンでの具体例**
+
+ユーザの恒久的な嗜好（「敬語を使わない」「コードブロックには言語タグを付ける」）や、複数日にまたがるプロジェクト固有の前提を `create` / `str_replace` で更新する。1 ターン限定の検索結果は memory に書かない。
+
+-----
 
 ### XML タグは注意機構として使う
 
@@ -164,7 +191,11 @@ context_management = {
 **アンチパターン**。全段落に `<important>` を付ける。「全部重要」は「どれも重要ではない」と意味的に等価で、注意機構を狂わせる方向に効く。
 :::
 
-**具体例**。Part 3 の "worked example" では、同一の needle を `<key_information>...</key_information>` で囲んだ treatment と、平文の control で NIAH 精度を比較する。境界を明示しただけで attention が変わる。詳細は Anthropic Docs の [Use XML tags](https://docs.anthropic.com/ja/docs/build-with-claude/prompt-engineering/use-xml-tags) を参照。
+#### **ハンズオンでの具体例**
+
+Part 3 の "worked example" では、同一の needle を `<key_information>...</key_information>` で囲んだ treatment と、平文の control で NIAH 精度を比較する。境界を明示しただけで attention が変わる。詳細は Anthropic Docs の [Use XML tags](https://docs.anthropic.com/ja/docs/build-with-claude/prompt-engineering/use-xml-tags) を参照。
+
+-----
 
 ### 「全部突っ込む」は怠惰、focused が勝つ
 
@@ -176,7 +207,11 @@ context_management = {
 **アンチパターン**。「retrieval の取りこぼしを防ぐため」と top-k を機械的に増やす。distractor の混入確率が上がり、retrieval は逆に劣化する。
 :::
 
-**具体例**。LongMemEval の focused vs full で、focused のほうが accuracy が高い。113K 全部を読ませることは「親切」ではなく「設計の放棄」である。
+#### **ハンズオンでの具体例**
+
+LongMemEval の focused vs full で、focused のほうが accuracy が高い。113K 全部を読ませることは「親切」ではなく「設計の放棄」である。
+
+-----
 
 ### 本番形状で eval する
 
@@ -188,7 +223,9 @@ context_management = {
 **アンチパターン**。staging 環境で短い文書だけで eval し、本番の長文 + 履歴 + tool 出力混在の状態で初めて性能を測る。本章冒頭の staging 95% / production 67% は、まさにこれが原因の典型。
 :::
 
-**具体例**。Part 2 で組んだ `INPUT_LENGTHS × DEPTHS` のグリッドそのままを、自社データの入力長分布と needle 配置に合わせて再構成すれば、最小限のプロダクション eval ハーネスになる。
+#### **ハンズオンでの具体例**
+
+Part 2 で組んだ `INPUT_LENGTHS × DEPTHS` のグリッドそのままを、自社データの入力長分布と needle 配置に合わせて再構成すれば、最小限のプロダクション eval ハーネスになる。
 
 ---
 
@@ -268,20 +305,21 @@ context_management = {
 
 ---
 
-## 気づきと前提が崩れた瞬間
+## よくある勘違いと気づき
 
 ここからは主観の話だ。Part 1 の Repeated Words のグラフを自分の手で出した瞬間、自分の中で静かに崩れていった前提が 3 つある。
 
-**(1) 1M context があるから全部入れて良い、と思っていた。**
-入る ≠ 使われる、だった。Repeated Words 実験が示すのは、推論を要しない単なる複製ですら長文では崩れる、という事実。context window は「物理的に入る上限」であって「精度が出る上限」ではない。`apple` を 500 個並べた中の 1 個の `apples` を、モデルは「直して」しまう。
+- 勘違い：1M context があるから全部入れて良い
+  > 入る ≠ 使われる、だった。Repeated Words 実験が示すのは、推論を要しない単なる複製ですら長文では崩れる、という事実。context window は「物理的に入る上限」であって「精度が出る上限」ではない。`apple` を 500 個並べた中の 1 個の `apples` を、モデルは「直して」しまう。
 
-**(2) 履歴は全部渡すほど賢くなる、と思っていた。**
-LongMemEval は逆を突きつけてくる。focused のほうが full より明確に高精度で、しかも安くて速い。「全部入れる」は親切ではなく、設計を放棄しているだけだった。
+- 勘違い：履歴は全部渡すほど賢くなる
+  > LongMemEval は逆を突きつけてくる。focused のほうが full より明確に高精度で、しかも安くて速い。「全部入れる」は親切ではなく、設計を放棄しているだけだった。
 
-**(3) context は「容量」だと思っていた。**
-そうではなく、「資源」であり「設計対象」だった。何を残すか・捨てるか・要約するか・外に逃がすかを、ループのたびに決める。容量で語ると Opus に上げる話になるが、資源で語ると tool result clearing を入れる話になる。立っている地面が変わる感覚があった。
+- 勘違い：context は「容量」である
+  > そうではなく、「資源」であり「設計対象」だった。何を残すか・捨てるか・要約するか・外に逃がすかを、ループのたびに決める。容量で語ると Opus に上げる話になるが、資源で語ると tool result clearing を入れる話になる。立っている地面が変わる感覚があった。
 
-セッション中に講師がさらっと口にした「Prompt engineering は単一ターンの指示の最適化、Context engineering はエージェント向けに動的 context をキュレートする技術」という整理が、この体験を一番きれいに言語化していた。前者は文章作法に近く、後者はソフトウェア設計に近い — その粒度の違いを、Repeated Words のグラフが視覚的に教えてくれた。
+- 勘違い：Prompt engineering の延長で Context engineering を語れる
+  > セッション中に講師がさらっと口にした「Prompt engineering は単一ターンの指示の最適化、Context engineering はエージェント向けに動的 context をキュレートする技術」という整理が、この体験を一番きれいに言語化していた。前者は文章作法に近く、後者はソフトウェア設計に近い — その粒度の違いを、Repeated Words のグラフが視覚的に教えてくれた。
 
 ---
 
@@ -289,13 +327,26 @@ LongMemEval は逆を突きつけてくる。focused のほうが full より明
 
 セッションを抜けて、メモ帳に書き残したのはこの 7 つ。
 
-1. **入れる量を減らす（最優先）。** 「念のため全部入れる」は最悪の選択。retrieval / pre-filter / summarization で関連 slice だけを渡す。
-2. **重要情報は冒頭か末尾。** 中盤に埋めない。指示は質問の直前にも再掲する（sandwich pattern）。
-3. **XML マーカーで重要箇所を明示する。** `<key_information>` `<document_content>` `<question>` の使い分けは、attention のチューニングコストとして安すぎる。ただし全部にタグを付けない。
-4. **Distractor は積極的に削る。** semantic distractor は短い context でも害があり、長い context では破壊的。top-k を増やすより減らす。
-5. **3 プリミティブを使い分ける。** tool result clearing / compaction / memory tool は、何が context を圧迫しているかで選ぶ。原因と治療の対応を間違えない。
-6. **推論を分割する。** 1 ショットで「長文 + 複雑な質問」を投げない。summarize-then-answer / chunk-and-retrieve / multi-turn に分解する。
-7. **本番に近い形状で必ず eval を回す。** ベンチマーク 95% でも自社 context shape で 67% は普通に起こる。入力長分布・depth・distractor を反映した eval セットを持つ。
+- **入れる量を減らす（最優先）**
+  - 「念のため全部入れる」は最悪の選択。retrieval / pre-filter / summarization で関連 slice だけを渡す。
+
+- **重要情報は冒頭か末尾**
+  - 中盤に埋めない。指示は質問の直前にも再掲する（sandwich pattern）。
+
+- **XML マーカーで重要箇所を明示する**
+  - `<key_information>` `<document_content>` `<question>` の使い分けは、attention のチューニングコストとして安すぎる。ただし全部にタグを付けない。
+
+- **Distractor は積極的に削る**
+  - semantic distractor は短い context でも害があり、長い context では破壊的。top-k を増やすより減らす。
+
+- **3 プリミティブを使い分ける**
+  - tool result clearing / compaction / memory tool は、何が context を圧迫しているかで選ぶ。原因と治療の対応を間違えない。
+
+- **推論を分割する**
+  - 1 ショットで「長文 + 複雑な質問」を投げない。summarize-then-answer / chunk-and-retrieve / multi-turn に分解する。
+
+- **本番に近い形状で必ず eval を回す**
+  - ベンチマーク 95% でも自社 context shape で 67% は普通に起こる。入力長分布・depth・distractor を反映した eval セットを持つ。
 
 ---
 
