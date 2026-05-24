@@ -30,6 +30,8 @@ free: true
 
 ## ベストプラクティス・アンチパターン・重要ポイント
 
+-----
+
 ### CLAUDE.md は「働き方の永続指示書」として設計する
 
 :::message
@@ -40,7 +42,9 @@ free: true
 **アンチパターン**: ロール宣言や賞賛 (「あなたはシニアエンジニアです」「最高の頭脳で」) を書き連ねる。曖昧で観測不能な指示はモデルの挙動を変えない。
 :::
 
-**ハンズオンでの具体例**: `day1/01_inventory-management/CLAUDE.md` には、`vue-expert` への委譲ルール、GitHub/Playwright MCP の使用強制、`v-for` のキーに `index` を使わない等の観測可能な制約が並ぶ。
+#### **ハンズオンでの具体例**
+
+`day1/01_inventory-management/CLAUDE.md` には、`vue-expert` への委譲ルール、GitHub/Playwright MCP の使用強制、`v-for` のキーに `index` を使わない等の観測可能な制約が並ぶ。
 
 ```markdown
 ## Critical Tool Usage Rules
@@ -67,6 +71,8 @@ free: true
 | エディタで直接編集               | ゼロ         | 構造的に整理する / レビュー対象にする          |
 | プロンプトで Claude に編集させる | あり         | 文言整理・章立て再構築など判断を借りる         |
 
+-----
+
 ### Plan Mode → 設計合意 → 実装の順序
 
 :::message
@@ -77,7 +83,11 @@ free: true
 **アンチパターン**: 複数ファイルにまたがる機能追加でも、いきなりコード生成させて差分レビューで巻き戻すフロー。手戻りコストが上がり、コンテキストも食う。
 :::
 
-**ハンズオンでの具体例**: 在庫管理アプリへ「予算スライダー付きの再発注タブ」を追加する課題では、Plan Mode を経由したかどうかで成果物の構造的な整合性が分かれた。Plan Mode は対象ファイル一覧と影響範囲をテキストで提示してから着手するため、不要な変更や見落としを着手前に潰せる。
+#### **ハンズオンでの具体例**
+
+在庫管理アプリへ「予算スライダー付きの再発注タブ」を追加する課題では、Plan Mode を経由したかどうかで成果物の構造的な整合性が分かれた。Plan Mode は対象ファイル一覧と影響範囲をテキストで提示してから着手するため、不要な変更や見落としを着手前に潰せる。
+
+-----
 
 ### コンテキスト管理は計器を見て扱う
 
@@ -89,7 +99,17 @@ free: true
 **アンチパターン**: 残量を見ずに長時間セッションを継続し、終盤で品質劣化や応答の脱線が起きてから対処する。
 :::
 
-**ハンズオンでの具体例**: Playwright MCP を追加する前後で `/context` を叩くと、ツール定義だけでまとまった量の枠が削られることが数値で見える。経験者の指摘では「15 個前後の MCP で context lock が起きる」とされ、`/compact keep the details of the restocking feature` のように残したい情報を指定して圧縮できる。
+#### **ハンズオンでの具体例**
+
+Playwright MCP を追加する前後で `/context` を叩くと、ツール定義だけでまとまった量の枠が削られることが数値で見える。経験者の指摘では「15 個前後の MCP で context lock が起きる」とされ、
+
+```bash: claude code cli
+/compact keep the details of the restocking feature`
+```
+
+のように残したい情報を指定して圧縮できる。
+
+-----
 
 ### MCP は引き算で設計する
 
@@ -101,14 +121,18 @@ free: true
 **アンチパターン**: 「便利そうだから」で MCP を足し続け、ツール定義の総量でコンテキスト枠を圧迫する。
 :::
 
-**ハンズオンでの具体例**: Playwright MCP の追加は、Claude を CLI の外に連れ出す最初のステップとして実演される。
+#### **ハンズオンでの具体例**
 
-```bash
+Playwright MCP の追加は、Claude を CLI の外に連れ出す最初のステップとして実演される。
+
+```bash: claude code cli
 # Bash モード ( ! ) から実行
 ! claude mcp add playwright npx @playwright/mcp@latest
 ```
 
 導入後は「開発サーバを立てて localhost:3000 のダッシュボードのスクリーンショットを撮り、主要タブを巡回する」と頼むだけで自動操作が走る。一方で導入直後の `/context` 差分は明確に大きく、足す前提と外す前提を最初から持っておく必要がある。
+
+-----
 
 ### Skills の description は索引である
 
@@ -120,7 +144,9 @@ free: true
 **アンチパターン**: `General-purpose helper for Vue stuff` のような曖昧表現。Claude が呼び出し場面を判定できず、スキルが死蔵される。
 :::
 
-**ハンズオンでの具体例**: 良い description と悪い description の対比は次のとおり。
+#### **ハンズオンでの具体例**
+
+良い description と悪い description の対比は次のとおり。
 
 ```text
 Bad : description: General-purpose helper for Vue stuff
@@ -128,6 +154,8 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 ```
 
 トリガ条件 (ファイルパス・ユーザ発話パターン)、入力、出力までを description に書き、本文は「呼ばれてから読まれる手順」に専念させる。
+
+-----
 
 ### 規律は Hooks で機械化する
 
@@ -139,9 +167,11 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 **アンチパターン**: 「コミット前に prettier をかけて」を毎回プロンプトで頼む。忘れる、忘れさせる、レビューでの指摘が増える。
 :::
 
-**ハンズオンでの具体例**: `Edit|Write` の後段で Prettier を流すだけでも、レビュー一次対応の負荷が下がる。
+#### **ハンズオンでの具体例**
 
-```json
+`Edit|Write` の後段で Prettier を流すだけでも、レビュー一次対応の負荷が下がる。
+
+```json: .claude/setting.json
 {
   "hooks": {
     "PostToolUse": [
@@ -161,6 +191,8 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 
 `prettier` を `eslint`, `mypy`, `tsc` に置き換えれば、スタックに合わせた規律を Claude に課せる。
 
+-----
+
 ### GitHub App とクラウド側エージェント連携
 
 :::message
@@ -171,7 +203,11 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 **アンチパターン**: ローカルの Claude Code のみで PR レビューも自分で読む運用。レビュアの待ち時間がボトルネックになる。
 :::
 
-**ハンズオンでの具体例**: PR コメントに `@claude このバグの原因を調べて` と書くと、クラウド側エージェントが応答し、ローカルとは別の労働時間が動き出す。ハンズオンではこの非同期連携を、レビュー導線の置き換えとして体験する。
+#### **ハンズオンでの具体例**
+
+PR コメントに `@claude このバグの原因を調べて` と書くと、クラウド側エージェントが応答し、ローカルとは別の労働時間が動き出す。ハンズオンではこの非同期連携を、レビュー導線の置き換えとして体験する。
+
+-----
 
 ### 比較対象のあるバグ修正は強い（Reports ページ Expert Challenge）
 
@@ -183,7 +219,9 @@ Good: description: Use when writing or modifying .vue files in client/src/views 
 **アンチパターン**: バグの症状だけを列挙して投げる。Claude は申告された項目に集中し、未申告のバグを取り逃がす。
 :::
 
-**ハンズオンでの具体例**: Reports ページの Expert Challenge では次のような指示で、申告 3 件以上のバグまで自動で洗い出される。
+#### **ハンズオンでの具体例**
+
+Reports ページの Expert Challenge では次のような指示で、申告 3 件以上のバグまで自動で洗い出される。
 
 ```text
 The Reports page (/reports) has multiple bugs compared to the rest of the app.
@@ -199,6 +237,8 @@ Orders are implemented for reference **.
 
 ポイントは `Dashboard.vue` / `Orders.vue` という参照実装を明示している点だ。情報設計でタスクの性質を「差分埋め」に変換している。
 
+-----
+
 ### Subagents / Plugins / Worktrees の使い分け
 
 :::message
@@ -209,7 +249,9 @@ Orders are implemented for reference **.
 **アンチパターン**: すべてを「便利機能」として一律に評価し、どれを採用するか場当たり的に選ぶ。
 :::
 
-**ハンズオンでの具体例**: 在庫管理アプリでは `vue-expert` Subagent が `.vue` 編集に強制委譲され、Worktrees は触れないが「ダークモード試作を Worktree で隔離する」シナリオが提示される。Hooks はステップ 12 で format/typecheck フックの形で並ぶ。輪郭をつかんでおくと、現場で「ここはこれを使う」と当てがつく。
+#### **ハンズオンでの具体例**
+
+在庫管理アプリでは `vue-expert` Subagent が `.vue` 編集に強制委譲され、Worktrees は触れないが「ダークモード試作を Worktree で隔離する」シナリオが提示される。Hooks はステップ 12 で format/typecheck フックの形で並ぶ。輪郭をつかんでおくと、現場で「ここはこれを使う」と当てがつけられるようになる。
 
 ## 押さえておきたいコード／設定
 
@@ -217,7 +259,7 @@ Orders are implemented for reference **.
 
 `CLAUDE.md` の標準骨格。
 
-```markdown
+```markdown: CLAUDE.md
 # CLAUDE.md
 
 <1〜2行のプロジェクト概要>
@@ -250,7 +292,7 @@ Orders are implemented for reference **.
 
 Skill の frontmatter は progressive disclosure の入口設計。`description` に発動条件、本文に手順を分離する。
 
-```markdown
+```markdown: skills/vue-composition-refactor/SKILL.md
 ---
 name: vue-composition-refactor
 description: |
@@ -281,19 +323,37 @@ PostToolUse Hook の最小例 (前掲)。`prettier` を `eslint`, `mypy`, `tsc` 
 
 ## よくある勘違いと気づき
 
-- **「Claude Code はターミナル上の賢いコード生成 CLI」だと思っていたが、実際には CLAUDE.md / Plan Mode / Hooks / MCP / GitHub App が連動した「働き方の設計面」だった。**コードを書く速度の話ではなく、何を約束し、何を強制し、誰に委ねるかを設計する道具だ。
-- **「MCP は多いほど良い」と思っていたが、足し算より引き算が効く道具だった。**Playwright MCP を入れる前後で `/context` を眺めると、ツール定義だけでコンテキスト枠が目に見えて削れる。15 個前後で context lock が起きるという経験則も腑に落ちた。
-- **「Skill の description は雰囲気で書けばいい」と思っていたが、description は索引でありメタデータだった。**入口が曖昧だとスキルは死蔵される。「いつ・どんな入力で・何を返すか」を書くものだった。
-- **「最高の頭脳として振る舞え」と書けば賢くなると錯覚していたが、Claude は気合系の主観的指示にはほぼ反応しなかった。**反応するのは「`<script setup>` で書く」「`ref` ではなく `computed` を返す」のような観測可能な制約だった。気持ちで盛らずに、ルールで縛る。
-- **「バグ修正は症状を渡すのがプロンプトのコツ」だと思っていたが、効くのは『比較対象を渡す』ことだった。**Reports ページの課題で動く参照実装 (`Dashboard.vue`, `Orders.vue`) を明示しただけで、Claude は申告 3 件を超える 8 件以上のバグを淡々と直した。タスクを「未知のバグ当て」から「差分埋め」に作り変える情報設計だった。
-- **「Plan Mode はコード生成を遅らせるだけ」だと思っていたが、書かせる前に合意する順序の入れ替えが、出来上がりの品質と納得感を明確に変えた。**設計の手前で立ち止まる時間は、後工程の手戻りより安い。
+- 勘違い：Claude Code はターミナル上の賢いコード生成 CLIである
+  > `CLAUDE.md` / `Plan Mode` / `Hooks` / `MCP` が連動した「働き方の設計面」だった。コードを書く速度の話ではなく、何を約束し、何を強制し、誰に委ねるかを**設計する道具**である。
+
+- 勘違い：`MCP` は多いほど良い
+  > `MCP` は足し算より**引き算**が効く道具である。`Playwright MCP` を入れる前後で `/context` を眺めると、ツール定義だけでコンテキスト枠が目に見えて削れる。15 個前後で context lock が起きるという経験則も腑に落ちた。
+
+- 勘違い：Skill の `description` は雰囲気で書けばいい
+  > Skillの`description` は索引でありメタデータである。入口が曖昧だとスキルは死蔵される。**「いつ・どんな入力で・何を返すか」を明記**すべきものである。
+
+- 勘違い：「最高の頭脳として振る舞え」と書けば賢くなる
+  > Claude は気合系の主観的指示にはほぼ反応しない。反応するのは「`<script setup>` で書く」「`ref` ではなく `computed` を返す」のような観測可能な制約だった。気持ちで盛らずに、ルールで明確に指示する。
+
+- 勘違い：バグ修正は症状を渡すのがプロンプトのコツ
+  > 効くのは『比較対象を渡す』ことだった。**Reports ページの課題で動く参照実装 (`Dashboard.vue`, `Orders.vue`) を明示しただけで、Claude は申告 3 件を超える 8 件以上のバグを淡々と直した。タスクを「未知のバグ当て」から「差分埋め」に作り変える情報設計だった。
+
+- `Plan Mode` はコード生成を遅らせる
+  > `Plan Mode`による実装前の合意が、出来上がりの品質と納得感を明確に変えた。設計の手前で立ち止まる時間は、後工程の手戻りより安い。
 
 ## 現場に持ち帰りたいこと
 
-- **Worktree を「失敗のコストを下げる装置」として使う。**`git worktree` で別ブランチを別ディレクトリに切り出し、本流の作業を続けたまま実験的な改修を Claude に任せる。要らなくなれば Worktree ごと捨てる。試行回数が増える設計を、機能ではなく運用として定着させる。
-- **`/context` を会話の体温計にする。**30 ターン超で叩き、80% で `/compact`、90% で `/clear` の三段構えを習慣化する。重要事実は事前に `CLAUDE.md` へ逃がす。
-- **Hooks で規律を機械化する。**プロジェクト初期に format/typecheck/lint の `PostToolUse` を整え、プロンプトで頼まなくても規律が回る土台を最初に置く。
-- **CLAUDE.md と Skill description を「観測可能な制約」で書き直す。**気合系の表現を一掃し、ファイルパス・関数名・構文要件で書く。
+- **`Worktree` を「失敗のコストを下げる装置」として使う**
+  - `git worktree` で別ブランチを別ディレクトリに切り出し、本流の作業を続けたまま実験的な改修を Claude に任せる。要らなくなれば Worktree ごと捨てる。試行回数が増える設計を、機能ではなく運用として定着させる。
+
+- **`/context` を会話の計器にする**
+  - 30 ターン超でコンテキストウィンドウを確認し、80% で `/compact`、90% で `/clear` の三段構えを習慣化する。重要事実は事前に `CLAUDE.md` や`memory` へ逃がす。
+
+- **Hooks で規律を機械化する**
+  - プロジェクト初期に `format`/`typecheck`/`lint` の `PostToolUse` を整え、プロンプトで頼まなくても規律が回る土台を最初に整備する。
+
+- **`CLAUDE.md` と Skill `description` を「観測可能な制約」で書き直す**
+  - 気合系の表現を一掃し、ファイルパス・関数名・構文要件などより明確な内容で記述する。
 
 ## もっと深掘りする入口
 
