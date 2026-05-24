@@ -48,75 +48,57 @@ free: true
 
 ### Context は有限資源として設計する
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。Context は容量ではなく資源である。1M token 入るという物理上限は「精度が出る上限」を意味しない。何を残し、何を捨て、何を要約し、何を外部に逃がすか — エージェントループのターンごとに決める設計対象である。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。「念のため全部入れる」。retrieval も pre-filter も summarization も挟まず、生のドキュメントと履歴を丸ごと毎ターン同梱する設計。短期的には楽だが、context rot の影響を最も強く受ける。
-
-</div>
+:::
 
 **具体例**。LongMemEval で 113K token の会話履歴を full で渡したケースと、関連ターンに絞った focused で渡したケースを比較すると、focused のほうが速く・安く・正確だった。「全部渡せば賢くなる」ではなく、「絞ったほうが賢くなる」が観測された一次データになる。
 
 ### Context rot は curve であって閾値ではない
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。入力長が伸びるほど、忠実性 (faithfulness) と検索性能 (retrieval) は連続的に劣化する。「N トークンまでは安全、それ以降は危険」という閾値ではなく、長くなるほど少しずつ崩れていくカーブとして理解する。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。「context window 上限まではフルに使ってよい」と前提を置くこと。劣化は容量を使い切る手前から始まる。
-
-</div>
+:::
 
 **具体例**。Part 1 の Repeated Words は、推論を一切要しないただの複製タスクであるにもかかわらず、語数を 25 → 50 → 100 → 250 → 500 → 1000 → 2500 と振っていくと Levenshtein スコアが緩やかに落ちる。`apple` x500 個の中に 1 個だけ `apples` を混ぜて「そのまま写して」と命じても、長くなるにつれモデルは普通に `apple` に「直して」しまう。
 
 ### "Lost in the middle" は位置で殴る
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。同じ情報でも、document の冒頭・末尾に置くか、中盤に置くかで取り出し精度が変わる。最弱は **25–50% depth** の中盤帯。重要情報は冒頭か末尾に置く。指示は質問の直前にも再掲する（sandwich pattern）。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。長文の中盤に重要情報を埋めて、モデルが拾ってくれることを期待する設計。Chroma の grid を見れば、中盤が一番暗い帯になることが先に分かっている。
-
-</div>
+:::
 
 **具体例**。Part 2 の NIAH ヒートマップで `needle_depth=25` `needle_depth=50` の行が、冒頭 (0%) や末尾 (100%) の行より明確に低い accuracy を示す。Anthropic Docs の [Long context tips](https://docs.anthropic.com/ja/docs/build-with-claude/prompt-engineering/long-context-tips) も「重要情報は末尾近くに置け」を明示している。
 
 ### Prompt と Context Engineering は別スキル
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。前者は単発ターンの言葉遣い（XML、CoT、role 設定、few-shot 等）の最適化、後者はエージェントループの中で「何を残し / 落とし / 要約し / 外に逃がすか」を多ターンにわたって設計する技術。問題領域も使う道具も別物である。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。「prompt を長く詳しく書く」ことを context engineering と呼ぶ。長い prompt は単に長い prompt であり、context rot を悪化させる側に効く。
-
-</div>
+:::
 
 **具体例**。Prompt Engineering の延長で「指示と参照情報を全部 system prompt に詰める」と、毎ターンその全量がコンテキストを食い続ける。Context Engineering 視点では、参照情報は memory tool に逃がすか、retrieval で必要分のみ持ってくる構造に切り替える。
 
 ### 3 primitives は問題に応じて選ぶ
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。Anthropic が示すエージェント向け context 管理プリミティブは 3 つ。何が context を圧迫しているかによって選ぶ。
-
-</div>
+:::
 
 | 圧迫源                       | 使うプリミティブ      | 役割                                       |
 | ---------------------------- | --------------------- | ------------------------------------------ |
@@ -124,21 +106,17 @@ free: true
 | 履歴自体が長い               | Compaction            | 履歴を要約に置き換える                     |
 | セッションを跨いで保持したい | Memory tool           | 外部ストアに退避し、必要時に取り出す       |
 
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。原因を見ずに「とりあえず compaction を入れる」「とりあえず memory tool を入れる」。tool 出力が暴れているのに compaction を入れても、要約結果がさらに暴れる。
-
-</div>
+:::
 
 **具体例**。WebFetch や検索系ツールの raw HTML/JSON が会話履歴を肥大化させているケースは Tool result clearing が第一手。複数ターンにわたる雑談・前提共有で履歴が伸びているケースは Compaction。プロジェクトを跨いだユーザ嗜好の記憶などは Memory tool。
 
 ### Tool Result Clearing の設定項目
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。Tool Result Clearing は次の 5 つの設定で挙動を制御する。
-
-</div>
+:::
 
 - `trigger` — 何で発火するか（例: `input_tokens` が 100K 超）
 - `keep` — 直近何件のツール結果を残すか
@@ -146,11 +124,9 @@ free: true
 - `exclude_tools` — 保護したいツール名のリスト（memory 等）
 - `clear_tool_inputs` — 入力側も落とすかどうか
 
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。`exclude_tools` を指定せずに memory tool 等の「落としてはいけないツール出力」まで巻き込んで削除する。落とすべきは raw な検索結果や fetch 結果であって、永続化責務を持つツールの返り値ではない。
-
-</div>
+:::
 
 **具体例**。
 
@@ -168,65 +144,49 @@ context_management = {
 
 ### Memory tool は外部ストレージ責務
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。Memory tool はファイルバックの外部ストアに対する CRUD インターフェースであり、モデル自身が「何を保存するか / 更新するか / 消すか」をループ中に決める。API は `view` / `create` / `str_replace` / `insert` / `delete`。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。会話履歴を全部 memory に書き込む。memory はあくまで「セッションを跨いで残す必要があるもの」用であり、短期記憶の代替ではない。短期記憶は compaction が担う。
-
-</div>
+:::
 
 **具体例**。ユーザの恒久的な嗜好（「敬語を使わない」「コードブロックには言語タグを付ける」）や、複数日にまたがるプロジェクト固有の前提を `create` / `str_replace` で更新する。1 ターン限定の検索結果は memory に書かない。
 
 ### XML タグは注意機構として使う
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。`<key_information>` `<document_content>` `<question>` のような XML タグで境界をモデルに明示すると、retrieval スコアが改善するケースがある。中身を変えていなくても、attention が乗りやすくなる。Anthropic の訓練データと RLHF が XML 構造化に整合しているためと考えられる。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。全段落に `<important>` を付ける。「全部重要」は「どれも重要ではない」と意味的に等価で、注意機構を狂わせる方向に効く。
-
-</div>
+:::
 
 **具体例**。Part 3 の "worked example" では、同一の needle を `<key_information>...</key_information>` で囲んだ treatment と、平文の control で NIAH 精度を比較する。境界を明示しただけで attention が変わる。詳細は Anthropic Docs の [Use XML tags](https://docs.anthropic.com/ja/docs/build-with-claude/prompt-engineering/use-xml-tags) を参照。
 
 ### 「全部突っ込む」は怠惰、focused が勝つ
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。Distractor（意味的に似ているが無関係な情報）は short context でも害があり、long context では破壊的に効く。top-k を増やすより減らす。focused 設計のほうが、速さ・コスト・精度のすべてで勝つ。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。「retrieval の取りこぼしを防ぐため」と top-k を機械的に増やす。distractor の混入確率が上がり、retrieval は逆に劣化する。
-
-</div>
+:::
 
 **具体例**。LongMemEval の focused vs full で、focused のほうが accuracy が高い。113K 全部を読ませることは「親切」ではなく「設計の放棄」である。
 
 ### 本番形状で eval する
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**。標準ベンチマークでの 95% は、自社の context shape での 95% を保証しない。入力長分布・needle depth・distractor 構成を、本番に近い形で揃えた eval セットを用意し、context engineering の変更ごとに回す。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**。staging 環境で短い文書だけで eval し、本番の長文 + 履歴 + tool 出力混在の状態で初めて性能を測る。本章冒頭の staging 95% / production 67% は、まさにこれが原因の典型。
-
-</div>
+:::
 
 **具体例**。Part 2 で組んだ `INPUT_LENGTHS × DEPTHS` のグリッドそのままを、自社データの入力長分布と needle 配置に合わせて再構成すれば、最小限のプロダクション eval ハーネスになる。
 

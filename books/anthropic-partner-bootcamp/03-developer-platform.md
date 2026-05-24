@@ -31,81 +31,61 @@ TechFlow は中堅 B2B SaaS で、Tier 1 サポートが 1 日 500 件超 (`500+
 
 ### Agentic loop は `stop_reason` を軸に組む
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: エージェントの本体は「`response.stop_reason == "tool_use"` のあいだ回す while ループ」である。各イテレーションで `tool_use` ブロックを実装にディスパッチし、結果を `tool_result` で次ターンへ積む。`stop_reason` の取りうる値は 3 つで、`"tool_use"` ならループ継続、`"end_turn"` で終了、`"max_tokens"` は実質エラーとして扱う。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**: ループ脱出条件をターン数や時間に置く実装。Claude は途中で「もう一段ツールを呼びたい」と判断する場合があり、`stop_reason` 以外で打ち切ると tool call が宙に浮き、次ターンに整合性エラーを返す。
-
-</div>
+:::
 
 **ハンズオンでの具体例**: ノートブック Part 1 の `run_agent()` は、`max_tokens=32000`・`thinking={"type": "adaptive"}` を全コールに渡し、`while response.stop_reason == "tool_use":` 直下で `tool_result` を組み立てる。`tool_result` の `tool_use_id` には **`block.id`（受信した `ToolUseBlock` の id）** を必ず入れる。これがないと API がエラーで弾く。
 
 ### 思考モードと effort は粒度を分ける
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: `thinking` パラメタは「思考をどう生成するか」、`output_config.effort` は「どこまで深く考えるか」を制御する。`thinking` の値は `"adaptive"`（複雑さに応じて自動）／`"enabled"`（常に生成）／`"none"`（無効）の 3 種。`effort` は `"low"` / `"medium"` / `"high"` / `"xhigh"` / `"max"` の 5 段階で、**API デフォルトは `"high"`**（パラメータ省略時と同じ挙動）。`xhigh` は Claude Opus 4.7 専用の拡張レベルで、長時間のエージェント・コーディングタスク向けに Anthropic は **Opus 4.7 のコーディング／エージェント用途は `xhigh` から始めることを推奨**している。`max` は Mythos Preview / Opus 4.7 / Opus 4.6 / Sonnet 4.6 で利用可能な絶対最大の能力。adaptive + effort の組み合わせで「複雑なら深く、簡単なら浅く、上限はこちらで握る」が成立する。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**: 本番系で常に `effort="max"` や `xhigh` を貼る。レスポンス時間とトークン課金が数倍〜十数倍に膨らみ、500 件/日のスケールで経済合理性が崩壊する。逆に、曖昧チケットを `low` に固定すると、必要な仮説立てが行われずミスエスカレーションが増える。`high` をデフォルトと知らずに「念のため `xhigh`」を貼るのも、Sonnet 系では無効な値で実行時エラーになる罠がある（`xhigh` は Opus 4.7 限定）。
-
-</div>
+:::
 
 **ハンズオンでの具体例**: Part 2 の `run_agent_thinking()` は同一チケット `TKT-1046`（Singapore 拠点・15% の API が間欠 500）を `high` と `low` で連投する。`high` の思考トレースには「Singapore region routing degradation の可能性」「retry-success の頻度が rate limit パターンと一致しない」といった仮説が立つ一方、`low` ではほぼ言及されない。経過時間も `high≈22s` / `low≈19s` と差が出る。Opus 4.7 で実運用に持ち上げるなら、複雑チケットを `xhigh`、単純チケットを `medium`〜`low` にルーティングするのが筋の良い設計になる。
 
 ### `format` (JSON schema) は最終 call でのみ使う
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: `output_config.format` を渡すと、Claude の **すべてのテキスト出力が JSON Schema に制約される**。これが効くのはツールループが完了したあとの最終呼び出しに限られる。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**: ループ中の API コールに `format` を入れる。`tool_use` を返したいタイミングで「テキストは JSON でなければならない」と引っ張られ、ツール呼び出しが壊れる。スキーマで `additionalProperties` を省略するのも罠で、Claude が定義外のフィールドを生やして下流のパースが死ぬ。
-
-</div>
+:::
 
 **ハンズオンでの具体例**: Part 1 後半の `run_agent_structured()` は、ツールループ中は `output_config` を渡さず、ループ後に `messages` へ "Provide your structured resolution as JSON." を追加し、**1 度だけ** `output_config={"format": RESOLUTION_SCHEMA}` と `tool_choice={"type": "none"}` を併用して構造化 JSON を取り出す。スキーマには `additionalProperties: False` を必ず入れる。`tool_choice` の取りうる値は `none` / `auto` / `any` / `{"type": "tool", "name": ...}` の 4 種で、最終 call では `none` を明示する。
 
 ### Tool description は呼ばれ方を決める
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: `tool` スキーマの `description` は Claude にとっての API ドキュメントで、`name` と `input_schema` 以上に「いつ呼ぶか／呼ばないか」を左右する。`input_schema` の各プロパティ `description` まで具体例を書くと、入力の質も上がる。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**: 「Search the knowledge base.」のような事務的な 1 行で済ませる。Claude は「順序」「前提」「不可ケース」を読み取れず、`get_ticket` を飛ばして `search_kb` をいきなり呼ぶ、解決前に `resolve_ticket` を打つ、といった経路を取りはじめる。
-
-</div>
+:::
 
 **ハンズオンでの具体例**: ノートブックの `search_kb` description は "Use this to find troubleshooting steps, policies, or known solutions **before attempting to resolve a ticket.**" と **順序のヒント** が埋まっている。`resolve_ticket` の `status` プロパティは `enum: ["resolved", "escalated", "closed"]` と値域を絞り、description で `resolved = fix applied; escalated = needs Tier 2; closed = duplicate or invalid` と意味を明示している。これにより Claude のツール選択がほぼブレない。
 
 ### Content block を取りこぼさない
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: `response.content` は `ThinkingBlock` / `ToolUseBlock` / `TextBlock` の混在リストで返る。assistant ターンを次ターンへ積み戻すときは **`response.content` をそのまま** 渡す。extended thinking はサーバ側で連続性を検証しているため、`ThinkingBlock` を落とすと整合性エラーになる。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**: `text` だけ・`tool_use` だけを抽出して `messages` に積む。adaptive thinking 有効時には必ず壊れる。また、最終の構造化 JSON を取り出すときに `content[0]` を見る実装も罠で、`[ThinkingBlock, TextBlock]` の並びだと JSON は **末尾の TextBlock** に入る。
-
-</div>
+:::
 
 **ハンズオンでの具体例**:
 
@@ -126,37 +106,29 @@ data = json.loads(text_blocks[-1].text)
 
 ### Streaming は UX 改善メトリクスである
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: `client.messages.stream()` はコンテキストマネージャで、`content_block_start` / `content_block_delta` / `content_block_stop` の 3 種イベントが順番に流れる。`content_block_delta` の `delta.type` は `thinking_delta`（思考トークン）／`text_delta`（応答トークン）／`input_json_delta`（ツール引数 JSON の断片）の 3 種で、これらを別々にハンドリングすると思考・応答・ツール引数が独立した流れとして可視化できる。ストリーム終了後は `stream.get_final_message()` で完全な `Message` オブジェクトを取得する。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**: ストリーミングをトークン節約や速度短縮の手段だと誤解すること。実体は UX 上の体感改善 ── 「2 段落待たせる」のではなく「1 文ずつ流れる」 ── であって、レイテンシ自体は短くならない。また、ストリーム中に `block.input` を読もうとしても、ツール引数 JSON は `get_final_message()` 呼び出し後に確定するため、ストリーム終了前のアクセスは不完全な値を返す。
-
-</div>
+:::
 
 **ハンズオンでの具体例**: Part 3 の `run_agent_streaming()` では `content_block_start` で `block.type` を見て `[Thinking]` / `[Tool: name]` / `[Response]` のラベルを切り替え、`content_block_delta` の 3 種 delta をそれぞれ `flush=True` で書き出す。最終構造化出力もストリームで取り、`text_delta` だけを画面に流す。
 
 ### クライアント側の地味な落とし穴
 
-<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message
 **原則**: 「Messages API はサーバ側に状態を持ち、SDK は薄い HTTP クライアントである」と考えて構成パラメタを揃える。
+:::
 
-</div>
-
-<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
-
+:::message alert
 **アンチパターン**:
 
 - `timeout` を省略する。`max_tokens > 21333` で非ストリーミング呼び出しをすると、SDK デフォルトのタイムアウトに先に当たって落ちる。
 - API キーをノートブックや Git にハードコードする。
 - 1 年前のプロンプト・スキル定義を新モデルに使い回す（旧モデル向けの「最も賢い存在として振る舞え」「役割を与える」式のメタ指示は、新モデルではノイズになる場合がある）。
-
-</div>
+:::
 
 **ハンズオンでの具体例**: ノートブック冒頭で `anthropic.Anthropic(timeout=900.0)` と明示している。API キーは `os.environ["ANTHROPIC_API_KEY"]` 経由で読み、`client.messages.create()` の `model` には `MODEL = "claude-sonnet-4-6"` を渡す。Setup セルは接続確認 (`Reply with only: ready`) と SDK バージョン表示を兼ねており、これを毎回最初に走らせるとデバッグが楽になる。
 
