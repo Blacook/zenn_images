@@ -34,9 +34,11 @@ Meridian は B2B SaaS 企業とサポートキューの間に立つ仲介サー�
 
 つまり「動かない」の最初の原因候補に置くべきは、モデルの賢さではなく、**prompt の書き方・agent 同士の役割分担・tool の shape** である。これらは Opus に乗り換えても直らない種類のバグで、設計の側を直さない限り再発する。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 症状を見た瞬間にモデル変更（Sonnet → Opus）を提案する。プロンプトに例文を足して様子を見る。
-:::
+
+</div>
 
 **具体例**: T-4471 の coordinator trace を読むと、coordinator は冒頭で「このチケットには SSO と billing の 2 件がある」と正しく認識している。つまり分類能力は壊れていない。それでも 2 件は解決されない。原因は `spawn_specialist` のツール schema が single-dispatch しか許さない形になっていたことであって、モデルを上位に差し替えても、`list[string]` を受け取る形にしない限り同じ失敗を再生産する。
 
@@ -56,9 +58,11 @@ Symptom → Hypothesis → Evidence → Recommendation の 4 ステップを、�
 - **Evidence**: 「prompt が変」は evidence ではない。「coordinator system prompt の L23 で `pick the one the customer seems most blocked by` と書いている」のように、ファイル名・行番号・該当文字列まで具体化する。
 - **Recommendation**: 「prompt を改善する」では不十分。「`coordinator-tools.json` の `spawn_specialist` schema の `category: string` を `categories: list[string]` に変える」のように、ファイル名・行番号・差分まで scoped にする。行番号を指せないなら Evidence に戻る。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: Symptom を自分の言葉で要約し、Hypothesis を 1 つだけ立て、Evidence に「prompt がよくない」と書き、Recommendation を「プロンプトを改善する」で締める。
-:::
+
+</div>
 
 ### artifact は prompts / tool descriptions / execution traces の 3 点セットで要求する
 
@@ -70,9 +74,11 @@ agentic system の診断を引き受けた最初の打ち合わせで、必ず�
 
 この 3 点が揃わないと、Diagnostic Loop の Evidence ステップが成立しない。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: trace だけ見て「coordinator がツールを呼ばなかった」と結論する。tool description を見ずに「モデルの判断力不足」と書く。
-:::
+
+</div>
 
 **具体例**: rate limit 事例の根本原因は `fetch_customer_v2_databricks` というツール名にあった。trace だけ見ると「メトリクス取得ツールを呼ばなかった」としか分からないが、tool description を並べて読むと、ツール名に「rate limit を疑ったとき呼ぶ」というトリガー語彙が一切含まれていないことが見える。
 
@@ -87,17 +93,21 @@ agentic system の診断を引き受けた最初の打ち合わせで、必ず�
 5. **Context not reaching the model that needs it** — 必要な情報が、必要なモデルまで届いていない。
 6. **Cache placement breaking shared prompt regions** — cache pointer の置き場所が共有プロンプトを壊している。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 仮説リストを持たず、毎回ゼロから「何が悪いんだろう」と考える。結果、自分の bias（直近で踏んだバグの型）に毎回引きずられる。
-:::
+
+</div>
 
 ### 単一ディスパッチのボトルネックを疑う
 
 coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、multi-category 問題で必ず破綻する。原因はツール schema 側にあることが多く、prompt をどう書き直しても直らない。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: ツール側で `category: string` の単一 enum を受ける設計のまま、coordinator system prompt 側に「両方扱え」と書き足す。schema が許していないので、モデルは prompt に従えない。
-:::
+
+</div>
 
 **具体例**: T-4471 の trace は coordinator が両カテゴリを認識した直後、`spawn_specialist(category="account")` を 1 回だけ呼んで終わっていた。`coordinator-tools.json` を開くと、`spawn_specialist` の `input_schema` は `category` を単一 `string` enum で受ける形になっており、`categories: list[string]` への変更が必須。あわせて coordinator prompt の L23（`pick the one the customer seems most blocked by`）も削除し、「該当カテゴリすべてに spawn せよ」に書き換える。
 
@@ -105,9 +115,11 @@ coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、
 
 モデルがツールを選ぶときに参照するのは、ツール名と description である。実装由来の語彙（バージョン番号、データストア名）だけでツール名を決めると、モデルが「いつ呼ぶか」を推測できない。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: `fetch_customer_v2_databricks` のように、内部実装の語彙でツール名を決める。description にも「rate limit を疑ったとき」「使用量異常を確認したいとき」のトリガー条件が書かれていない。
-:::
+
+</div>
 
 **具体例**: rate limit 事例では、`fetch_customer_v2_databricks` を `fetch_customer_metrics_for_rate_limiting` のように呼び出しトリガーを含む名前にリネームし、description に「use this when a customer reports rate limiting or usage anomalies」を加える。これで「メトリクスを呼ばずに plan config を読み上げる」失敗が構造的に防げる。
 
@@ -115,9 +127,11 @@ coordinator が複数の sub-agent を並行 / 連続に呼べない構造は、
 
 sub-agent が「自分のスコープ外です」「解決しました」と coordinator に返すとき、それが本当にツールを呼んだ結果なのかは prompt の文面だけでは保証できない。構造で強制する必要がある。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: sub-agent system prompt に「必要なら resolution tool を呼びましょう」と書いて済ます。
-:::
+
+</div>
 
 **具体例**: 3 つの構造的手当てを組み合わせる。
 
@@ -129,9 +143,11 @@ sub-agent が「自分のスコープ外です」「解決しました」と coo
 
 orchestrator と sub-agent を同一モデルで揃える必要はない。判断の重さに応じて階層化する。
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 全 agent を同じモデル（例: 全部 Sonnet）で組む。コストか精度のどちらかに無自覚な負債が溜まる。
-:::
+
+</div>
 
 **具体例**: 分類・分岐・統合のような高負荷の判断を担う coordinator を Opus、個別ツールを定型的に回す sub-agent を Sonnet または Haiku に分ける。planning に上位モデル、execution に高速モデルという階層は、コストと精度の両面で合理的。
 

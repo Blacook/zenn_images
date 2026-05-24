@@ -36,13 +36,17 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Pressure Test を「先に」設計する
 
-:::note info
-**原則**: Pressure Test は最終評価のためのチェックリストではなく、エージェント設計に先んじて置く設計図として扱う。失敗モードの inventory を先に確定し、各失敗を防ぐ責務をどの層に置くかを設計段階で決める。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: Pressure Test は最終評価のためのチェックリストではなく、エージェント設計に先んじて置く設計図として扱う。失敗モードの inventory を先に確定し、各失敗を防ぐ責務をどの層に置くかを設計段階で決める。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 実装してから「テストでも書くか」と eval を後追いで作る。この順序では eval が「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。
-:::
+
+</div>
 
 **具体例**: 配布された 5 つの Pressure Test と各々の failure signature は以下の通り。
 
@@ -56,25 +60,33 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Surprise RFP で generalization を測る
 
-:::note info
-**原則**: エージェントの品質は、開発用入力に対するスコアではなく、開発時には存在しなかった入力に対するスコアで測る。開発用と評価用を分離しない限り、overfitting は構造的に検出できない。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: エージェントの品質は、開発用入力に対するスコアではなく、開発時には存在しなかった入力に対するスコアで測る。開発用と評価用を分離しない限り、overfitting は構造的に検出できない。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 開発用 RFP で 95% を達成して完成宣言する。開発時に観測した failure mode しか防御できていない可能性を切り分けられない。
-:::
+
+</div>
 
 **具体例**: ノートブック Part 9 の Surprise RFP は配布されず、最終評価時に初めて与えられる。training と評価で入力が異なる場合にのみ、「ハードコードや暗黙の前提に依存していないか」を判定できる。
 
 ### 3-layer responsibility model を実装版に落とす
 
-:::note info
-**原則**: プロンプトとツールは「システムプロンプト = モチベーション付け / tool description = 文脈付け / tool 実装 = 安全網」の 3 層で責務を分割する。同じ責務を複数層に書くのではなく、各層に固有の責務を割り当てる。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: プロンプトとツールは「システムプロンプト = モチベーション付け / tool description = 文脈付け / tool 実装 = 安全網」の 3 層で責務を分割する。同じ責務を複数層に書くのではなく、各層に固有の責務を割り当てる。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 全ての制約をシステムプロンプトに集約する、または tool description にロール宣言まで書き込む。書く場所を間違えると、モデルが tool 選択を決める瞬間に必要な情報が文脈にない、あるいは tool エラーから回復する経路が欠ける、という形で効かない。
-:::
+
+</div>
 
 **具体例**: RFP エージェントでの 3 層対応は以下の通り。
 
@@ -93,13 +105,17 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Output contract を JSON で固定する
 
-:::note info
-**原則**: エージェントの出力は固定された JSON contract で受ける。後段の処理（review、export、集計）はこの contract を前提に書く。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: エージェントの出力は固定された JSON contract で受ける。後段の処理（review、export、集計）はこの contract を前提に書く。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 自然言語の回答だけを返し、review・export 段階で再パースする。フィールドの欠落や形式ぶれが後段の処理を壊す。
-:::
+
+</div>
 
 **具体例**: RFP エージェントの contract は以下の固定フィールドで構成する。
 
@@ -112,21 +128,27 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 ### Consistency reviewer を sub-agent として置く
 
-:::note info
-**原則**: 横断整合性チェックは Draft エージェントとは別の sub-agent に分離し、各回答に対して pass/flag の判定と矛盾元 ID を返させる。検証義務を明示し、引用なしのフラグは禁止する。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: 横断整合性チェックは Draft エージェントとは別の sub-agent に分離し、各回答に対して pass/flag の判定と矛盾元 ID を返させる。検証義務を明示し、引用なしのフラグは禁止する。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: Draft エージェントに「整合性も気をつけて」と指示する。複数責務を 1 エージェントに混載すると「全体的に整合性は問題ないと思われます」のような無内容な肯定が返る。
-:::
+
+</div>
 
 **具体例**: Reviewer の出力契約は status (`pass` / `flag`) と `contradiction_with_prior_id` の 2 フィールドを必須化する。引用できない矛盾はフラグできない、というルールを明示で渡すことで over-claim を構造的に防ぐ。
 
 ### Eval は accuracy / sources / consistency / calibration / edge cases / latency / cost で多軸化する
 
-:::note info
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **原則**: 単一スコアではエージェントの品質を測れない。最低でも以下 7 軸の assertion を eval suite に組み込む。
-:::
+
+</div>
 
 - Accuracy: 回答が KB の事実と一致するか
 - Source attribution: citation が KB の実在 ID か
@@ -136,45 +158,59 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 - Latency: per-question / per-RFP の応答時間
 - Cost: per-RFP の API コスト
 
-:::note alert
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: accuracy だけで採点する。confidence calibration が壊れたエージェント（low と言うべき場面で high を返す）を検出できない。
-:::
+
+</div>
 
 **具体例**: ノートブック Part 8 は 5 軸 assertion を Part 5 の実装より前に書くタスクとして配置されている。実装後ではなく実装前に書くことで、eval は「望ましい挙動の定義」として機能する。
 
 ### 3-line rule で回帰を防ぐ
 
-:::note info
-**原則**: Surprise RFP で失敗が観測されたら、修正はシステムプロンプト / tool description / tool 実装の各層に 1 行ずつ、合計 3 行までに抑える。それ以上の変更は別ブランチに切る。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: Surprise RFP で失敗が観測されたら、修正はシステムプロンプト / tool description / tool 実装の各層に 1 行ずつ、合計 3 行までに抑える。それ以上の変更は別ブランチに切る。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: Surprise の段階でアーキテクチャを書き換える。開発用 RFP で動いていた挙動まで壊れ、改善ではなく回帰になる。
-:::
+
+</div>
 
 **具体例**: Hallucination trap で失敗した場合の修正は、システムプロンプトに "If no matches, set confidence=low" を 1 行、tool description に "do NOT fabricate" を 1 行、tool 実装に `hint` フィールドを 1 行追加するに留める。
 
 ### エージェントには Sonnet を基本に置く
 
-:::note info
-**原則**: マルチステージ・tool use を含むエージェントは Sonnet を基本選択肢とする。Opus は推論依存度が高い単一タスクで、Haiku は単純分類などレイテンシ要件が厳しい場面でのみ採用する。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: マルチステージ・tool use を含むエージェントは Sonnet を基本選択肢とする。Opus は推論依存度が高い単一タスクで、Haiku は単純分類などレイテンシ要件が厳しい場面でのみ採用する。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 全段に Opus を使う（コスト過剰）、または全段に Haiku を使う（マルチステージで失敗が連鎖する）。
-:::
+
+</div>
 
 **具体例**: 第 8 章で観測された通り、Haiku は単純分類タスクで $0.35 / 1K calls、Opus は $20.10 / 1K calls。RFP の 5 段階パイプラインで Haiku を使うと各段の精度ロスが乗算で増幅し、Opus を使うとコスト構造が破綻する。Sonnet 4.5 が中間点として実用解になる。
 
 ### MVP と production agent の境界を意識する
 
-:::note info
-**原則**: MVP は Parse + Retrieve + Draft の 3 段階で成立する。Review・compaction・memory といった生産投入向けの追加要素は、MVP が動作してから一段ずつ加える。
-:::
+<div style="background:#f0faf3;border-left:4px solid #1a7f37;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
 
-:::note alert
+**原則**: MVP は Parse + Retrieve + Draft の 3 段階で成立する。Review・compaction・memory といった生産投入向けの追加要素は、MVP が動作してから一段ずつ加える。
+
+</div>
+
+<div style="background:#fff5f5;border-left:4px solid #b42318;padding:0.75em 1em;margin:1em 0;border-radius:4px;color:#1f2328;">
+
 **アンチパターン**: 最初から Review + memory + compaction を組み込み、どの段が壊れているか切り分けられなくなる。
-:::
+
+</div>
 
 **具体例**: ハッカソンの 60 分は MVP（Parse + Retrieve + Draft）+ Review までを射程とし、memory tool / compaction は別演習の領域とする。Production 投入時は Effective context engineering の文書化された 3 プリミティブ（tool result clearing / compaction / memory tool）を順に追加する。
 
