@@ -5,7 +5,7 @@ summary: |
   推論最適化・コンテキスト工学を、現場で効くベストプラクティスとアンチパターンに
   整理した連載です。
 topics: ["claude", "anthropic", "agent", "partner-bootcamp", "accenture"]
-published: false
+published: true
 price: 0
 chapters:
   - 01-overview
