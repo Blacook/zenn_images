@@ -11,9 +11,7 @@ published: true
 
 参加して最も印象に残ったのは、各セッションで繰り返し語られたある一つの"テーゼ""でした。
 
-> **LLMシステムの失敗の大半は、モデルの問題ではなく、プロンプト・エージェント構成・ツール設計の問題である。
->
-> **
+> LLMシステムの失敗の大半は、モデルの問題ではなく、プロンプト・エージェント構成・ツール設計の問題である。
 
 LLM機能をアプリケーションに乗せた経験のあるエンジニアなら、一度はこう思ったことがあるはずです。「精度が出ない。Sonnetからの差し替え先はOpusでよいか？」と。ところが、上位モデルに差し替えても症状が変わらないケースが少なくない。出力のフォーマットがぶれる、ツール呼び出しの引数を取り違える、長い入力で前半を忘れる、といった現象は、**モデルの能力ではなく設計の問題**であることが大半です。Bootcampで何度も刷り込まれたのは、まさにこの原則でした。
 
@@ -224,3 +222,15 @@ Bootcampの最終セッションでは、参加者が時間内に組み上げた
 ### 所感
 
 Bootcampに参加する前、私はLLMアプリケーションの品質を「モデルが追いつくのを待つ仕事」だと半分くらい思っていました。実際には逆で、**モデルの能力に頼りきらない設計**を積み上げることでしか品質は出ない、というのが2日間で繰り返し示されたメッセージでした。本記事の6原則は、その学びを抽象化したものです。明日からの設計レビューで一つでも意識していただけたなら、この記事を書いた甲斐があり幸いです。
+
+![Partner Basecamp 看板](/images/agent-engineering-principles/bootcamp-sign.jpeg)
+*会場は Ferry Building 近くの [SHACK15](https://shack15.com/)*
+
+![Ferry Buildingからの眺め](/images/agent-engineering-principles/bootcamp-view.jpeg)
+*窓越しに Bay Bridge を望む。San Francisco 随一のロケーション*
+
+![Ferry Building内部](/images/agent-engineering-principles/bootcamp-ferry.jpeg)
+*Ferry Building 内のマーケットプレイス。Blue Bottle Coffeeや Dandelion も入っている*
+
+![集合写真](/images/agent-engineering-principles/bootcamp-group.jpeg)
+*Anthropic スタッフ・AJ参加者との集合写真*
