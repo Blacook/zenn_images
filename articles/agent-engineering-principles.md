@@ -1,5 +1,5 @@
 ---
-title: "AIエージェント設計の6原則 — Anthropic Partner Bootcampで得た気付き"
+title: "Anthropic Partner Bootcampに参加した件 ー AIエージェント設計の6原則"
 emoji: "🌉"
 type: "tech"
 topics: ["claude", "anthropic", "agent", "llm", "promptengineering"]
