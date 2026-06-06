@@ -19,6 +19,9 @@
   },
   "homepage": "https://github.com/Blacook/zenn_images#readme",
   "dependencies": {
-    "zenn-cli": "^0.4.7"
+    "zenn-cli": "^0.4.8"
+  },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.15.0"
   }
 }
