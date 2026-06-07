@@ -8,15 +8,27 @@ free: true
 
 ## はじめに — p99 で語るということ
 
-SLA を平均レイテンシで語ることは、クライアントが体験する遅さを覆い隠す。レストランの比喩がわかりやすい。半分の客には 5 分で料理が出てきて、もう半分には 25 分かかる店を「平均 15 分の店」と紹介されても、納得する客はいない。評判を決めるのは運悪く 25 分待たされた側の声であり、SLA 議論でも同じ構造が起きる。
+SLA（サービス品質保証）を平均レイテンシで語ることは、クライアントが体験する「遅さ」を包み隠してしまう。レストランの比喩がわかりやすい。半分の客には 5 分で料理が出てきて、もう半分には 25 分かかる店を「平均 15 分の店」と紹介されても、納得する客はいない。評判を決めるのは運悪く 25 分待たされた側の声であり、SLA 議論でも同じ構造が起きる。
 
-本章で扱う 4 指標と Prompt Caching の損益分岐は、その「運の悪い側」を数字で握り直すための道具立てだ。`mean()` ではなく p95 / p99 を、`tokens / TTC` ではなく `tokens / (TTC - TTFT)` を、そして「速い/安い」ではなく「どの確率でどの遅さでいくらか」を語れるようにする。
+本章で扱う 4 指標と Prompt Caching の損益分岐は、その「運の悪い側」を数字で作り直すための道標である。`mean()` ではなく p95 / p99 を、`tokens / TTC` ではなく `tokens / (TTC - TTFT)` を、そして「速い/安い」ではなく「どの確率でどの遅さでいくらか」を語れるようにする。
+
+:::details p95 / p99 とは？（パーセンタイルの読み方）
+全リクエストを応答時間の短い順に並べたとき、下から何%目にあたる値かを示す指標。
+
+| 指標        | 意味                    | 特徴                                                     |
+| ----------- | ----------------------- | ------------------------------------------------------ |
+| 平均（avg） | 全体の平均値            | 外れ値に引っ張られる。「遅いユーザー体験」を隠しやすい |
+| **p95**     | 全体の95%がこの時間以内 | 高負荷時やエッジケースのユーザー体験を反映             |
+| **p99**     | 全体の99%がこの時間以内 | 最も遅い1%のユーザー体験。SLAで使われることが多い      |
+
+平均（mean）は外れ値に引っ張られるため、「遅い体験をしたユーザー」の存在を隠す。一方 p99 は「1000件に10件は必ずこれ以上かかる」という確率的な保証として使えるため、SLA（サービス品質保証）の定義に適している。
+:::
 
 ---
 
 ## 題材 — 5 ステージと 4 指標
 
-ハンズオンの題材は `Inference_Optimization.ipynb`。単発呼び出しから始めて、モデル比較、Tool use ラウンドトリップ、Prompt caching の単発/マルチターン、最後に Bedrock / Strands 統合までを Notebook 上で計測する。
+ハンズオンの題材は `Inference_Optimization`。単発呼び出しから始めて、モデル比較、Tool use ラウンドトリップ、Prompt caching の単発/マルチターン、最後に Bedrock / Strands 統合までを Notebook 上で計測する。
 
 LLM のレスポンスはユーザの目には 1 本のストリームに見えるが、内部では 5 つのステージに分かれている。
 
@@ -40,15 +52,19 @@ LLM のレスポンスはユーザの目には 1 本のストリームに見え�
 - **OTPS** (Output Tokens Per Second): `output_tokens / (TTC − TTFT)`。**分母は TTC ではない**。TTC で割ると prefill 待ちが混ざる。
 - **Cost**: 入出力トークン数 × モデル単価。請求書に直結する。
 
-同一プロンプト `"What is machine learning? Answer in 2 sentences."` を Haiku / Sonnet / Opus に 5 回ずつ流したベンチマーク結果は以下のとおり。
+:::message
+**言語とトークン数**: 公式ドキュメント（[Pricing FAQ](https://platform.claude.com/docs/en/about-claude/pricing) / [Glossary](https://platform.claude.com/docs/en/about-claude/glossary)）によると、英語は 1 トークン ≈ 3.5〜4 文字だが、日本語・中国語などの CJK 文字は 1 文字あたり複数トークンを消費する。同一内容を日本語で書いた場合、英語版に比べてトークン数が **2〜3 倍**（＝コストも 2〜3 倍）になる。システムプロンプトやツール定義を英語で記述するだけで、単純計算で静的読み取りコストを **1/2〜1/3 に削減**できる。下のベンチマークも英語プロンプトで測定している点に注意。
+:::
+
+同一プロンプト `"What is machine learning? Answer in 2 sentences."` を Haiku / Sonnet / Opus に 5 回ずつ流したベンチマーク結果（各種平均）は以下のとおり。
 
 | Model  | Runs | TTFT (ms) | TTC (ms) | OTPS  | $/1K calls |
-|--------|------|-----------|----------|-------|------------|
+| ------ | ---- | --------- | -------- | ----- | ---------- |
 | haiku  | 5    | 585       | 866      | 189.4 | $0.3463    |
 | sonnet | 5    | 1504      | 2297     | 65.2  | $4.0800    |
 | opus   | 5    | 800       | 1379     | 87.1  | $20.1000   |
 
-コストは Haiku → Opus で約 60 倍。TTFT は Haiku が最速、Opus が Sonnet より速いという順序の逆転も出ている。これらは Anthropic 直 API に加え、AWS Bedrock 経由・Strands Agents SDK 経由でも同じ 4 指標を測れる。
+コストは Haiku → Opus で約 60 倍。TTFT は Haiku が最速、Opus が Sonnet より速いという順序の逆転も出ている。これらの 4 指標は Anthropic 直 API に加え、AWS Bedrock 経由・Strands Agents SDK 経由でも同様に測れる。
 
 ---
 
@@ -66,14 +82,14 @@ LLM のレスポンスはユーザの目には 1 本のストリームに見え�
 
 #### **ハンズオンでの具体例**
 
-Notebook の `BenchmarkResult` データクラスは全試行を個別に保持し、後段の `summary()` で `mean` を出す構造になっている。実装段取りそのものが p99 を取り出すための準備として組まれている。「平均 15 分の店」のレストラン比喩は、p50 と p99 の差を意識するためのデフォルト言語として持っておく。
+Notebook の `BenchmarkResult` データクラスは全試行を個別に保持し、後段の `summary()` で `mean` を出す構造になっている。実装そのものに p99 を取り出すための処理が組まれている。「平均 15 分の店」のレストラン比喩は、p50 と p99 の差を意識するためのデフォルト言語として必ず持っておく。
 
 -----
 
 ### TTFT / TTC / OTPS / Cost の 4 指標を粒度を分けて測る
 
 :::message
-**原則**: TTFT は Consumer 体感、TTC は Builder の SLA、OTPS は生成フェーズだけの純粋速度、Cost は請求書を決める。役割が違うので 1 つに丸めない。
+**原則**: `TTFT` は Consumer 体感、`TTC` は Builder の SLA、`OTPS` は生成フェーズだけの純粋速度、`Cost` は請求書を決める。役割が違うので 1 つに丸めない。
 :::
 
 :::message alert
@@ -130,17 +146,17 @@ Notebook の `_stream_request` も `start_time = time.perf_counter()` で始ま�
 :::
 
 :::message alert
-**アンチパターン**: エージェントの「なんとなく遅い」を、モデル選択や max_tokens で解決しようとする。実際の支配項はツール呼び出し回数。
+**アンチパターン**: エージェントの「なんとなく遅い」を、モデル選択や max_tokens で解決しようとする。実際の支配因子は **ツール呼び出し回数** である。
 :::
 
 #### **ハンズオンでの具体例**
 
 Calculator tool を使う/使わない比較で、TTFT は `1437ms → 2339ms` と約 +900ms 増えた。
 
-| 条件 | TTFT (avg) | TTC (avg) |
-|---|---|---|
-| Without tool | 1437ms | 3250ms |
-| With tool    | 2339ms | 3910ms |
+| 条件         | TTFT (avg) | TTC (avg) |
+| ------------ | ---------- | --------- |
+| Without tool | 1437ms     | 3250ms    |
+| With tool    | 2339ms     | 3910ms    |
 
 ツールを増やすほどラウンドトリップが線形に積み上がるため、エージェント設計では「ツール数 × 平均呼び出し回数」をレイテンシ予算に含める。
 
@@ -152,13 +168,13 @@ Calculator tool を使う/使わない比較で、TTFT は `1437ms → 2339ms` �
 **原則**: 入力単価を 1.0× とした倍率で覚える。
 :::
 
-| 操作 | 単価 (Sonnet 4.5) | ベース倍率 |
-|---|---|---|
-| 通常入力 | $3.00 / 1M | 1.0× |
-| キャッシュ書込（5min TTL） | $3.75 / 1M | 1.25× |
-| キャッシュ書込（1h TTL） | $6.00 / 1M | 2.0× |
-| キャッシュ読出 | $0.30 / 1M | 0.1× |
-| 出力 | $15.00 / 1M | (変動なし) |
+| 操作                       | 単価 (Sonnet 4.5) | ベース倍率 |
+| -------------------------- | ----------------- | ---------- |
+| 通常入力                   | $3.00 / 1M        | 1.0×       |
+| キャッシュ書込（5min TTL） | $3.75 / 1M        | 1.25×      |
+| キャッシュ書込（1h TTL）   | $6.00 / 1M        | 2.0×       |
+| キャッシュ読出             | $0.30 / 1M        | 0.1×       |
+| 出力                       | $15.00 / 1M       | (変動なし) |
 
 損益分岐:
 
@@ -191,7 +207,7 @@ Calculator tool を使う/使わない比較で、TTFT は `1437ms → 2339ms` �
 
 #### **ハンズオンでの具体例**
 
-動的な値（時刻・ユーザ ID・乱数）は user message の末尾に寄せる。system / tools / 履歴は静的に保つ。
+動的な値（時刻・ユーザ ID・乱数）は user message の末尾に寄せる。**system / tools / 履歴は静的に保つ**。
 
 -----
 
@@ -201,11 +217,11 @@ Calculator tool を使う/使わない比較で、TTFT は `1437ms → 2339ms` �
 **原則**: caching は「効いているはず」で済ませない。レスポンスの `usage` フィールドを必ず観測する。
 :::
 
-| フィールド | 意味 |
-|---|---|
-| `usage.cache_creation_input_tokens` | 書き込んだトークン数（初回 > 0） |
-| `usage.cache_read_input_tokens` | 読み出したトークン数（2 回目以降 > 0） |
-| `usage.input_tokens` | キャッシュ対象外の純粋な入力トークン |
+| フィールド                          | 意味                                   |
+| ----------------------------------- | -------------------------------------- |
+| `usage.cache_creation_input_tokens` | 書き込んだトークン数（初回 > 0）       |
+| `usage.cache_read_input_tokens`     | 読み出したトークン数（2 回目以降 > 0） |
+| `usage.input_tokens`                | キャッシュ対象外の純粋な入力トークン   |
 
 :::message alert
 **アンチパターン**: ログに `usage` を残さない。誰かが system prompt にタイムスタンプを追加した瞬間に気づけず、請求額が静かに数倍化する。
@@ -223,13 +239,13 @@ CI で「同一プロンプトを 2 回叩いて 2 回目の `cache_read_input_t
 **原則**: AWS Bedrock 経由でも `cache_control` のペイロード構造は同じ。ただし `usage` のフィールド名と TTL サポート範囲に差分がある。
 :::
 
-| 項目 | Anthropic 直 API | AWS Bedrock |
-|---|---|---|
-| クライアント | `anthropic.Anthropic(api_key=...)` | `anthropic.AnthropicBedrock(aws_region=...)` |
-| モデル ID | `claude-sonnet-4-5-20250929` | `anthropic.claude-sonnet-4-5-20250929-v1:0` |
-| `usage` フィールド | snake_case (`cache_read_input_tokens`) | camelCase (`cacheReadInputTokens`) |
-| 1h TTL | Claude 4.5+ で対応 | Bedrock かつ Claude 4.5+ のみ |
-| スコープ | 組織（API キー）単位 | アカウント + リージョン + モデル ID 単位 |
+| 項目               | Anthropic 直 API                       | AWS Bedrock                                  |
+| ------------------ | -------------------------------------- | -------------------------------------------- |
+| クライアント       | `anthropic.Anthropic(api_key=...)`     | `anthropic.AnthropicBedrock(aws_region=...)` |
+| モデル ID          | `claude-sonnet-4-5-20250929`           | `anthropic.claude-sonnet-4-5-20250929-v1:0`  |
+| `usage` フィールド | snake_case (`cache_read_input_tokens`) | camelCase (`cacheReadInputTokens`)           |
+| 1h TTL             | Claude 4.5+ で対応                     | Bedrock かつ Claude 4.5+ のみ                |
+| スコープ           | 組織（API キー）単位                   | アカウント + リージョン + モデル ID 単位     |
 
 :::message alert
 **アンチパターン**: ログ集約・ダッシュボードを snake_case 前提で組む。Bedrock 経由のリクエストでフィールドが拾えず、命中率が見えなくなる。
@@ -251,7 +267,7 @@ CI で「同一プロンプトを 2 回叩いて 2 回目の `cache_read_input_t
 **アンチパターン**: 旧 API の `cache_tools="default"` を使い続ける。これは deprecation 方向（GitHub Issue #1577）。新規実装で採用すると将来の移行コストを抱える。
 :::
 
-#### **ハンズオンでの具体例**
+#### **具体例**
 
 
 ```python
@@ -269,7 +285,7 @@ model = BedrockModel(
 ### Tokenizer 変更は cost-neutral ではない
 
 :::message
-**原則**: Opus 4.7 では新しいトークナイザが入っており、同じテキストでも最大 +30% 程度トークン数が増えるケースがある。単価が下がっても、トークン数増がそれを食いつぶす可能性がある。
+**原則**: Opus 4.7 では新しい Tokenizer が入っており、同じテキストでも最大 +30% 程度トークン数が増えるケースがある。単価が下がっても、トークン数増がそれを食いつぶす可能性がある。
 :::
 
 :::message alert
@@ -288,6 +304,7 @@ model = BedrockModel(
 
 `client.messages.create()` は最終応答が揃ってから返るため、TTFT が測れない。必ず `client.messages.stream()` を使い、`content_block_start` イベントが立った瞬間を TTFT として記録する。
 
+:::details TTFT measurement
 ```python
 import time
 import os
@@ -320,11 +337,13 @@ def compute_otps(ttft, total_time, output_tokens):
     gen_time = total_time - ttft
     return (output_tokens / gen_time) if gen_time > 0 else 0
 ```
+:::
 
 ### `cache_control` を system block に打つ
 
 system prompt は通常 string で渡すが、キャッシュを使う場合は content block の list に変える。1,024 トークン以上であること、効いていることを `usage` で確認するところまでがセット。
 
+:::details Cache Check
 ```python
 SYSTEM_PROMPT = LONG_INSTRUCTIONS  # 1,024 トークン以上であること
 
@@ -353,11 +372,13 @@ print(f"input_tokens (uncached):     {response.usage.input_tokens}")
 - **2 回目以降（5min 以内）**: `cache_creation_input_tokens == 0`, `cache_read_input_tokens > 0`
 
 2 回目以降で `cache_read_input_tokens` が 0 のままなら、プレフィックスのどこかが揺れているか、最低トークン数に届いていないか、のいずれか。
+:::
 
 ### マルチターン会話での breakpoint 切替
 
 マルチターンでキャッシュを効かせるコツは、**直前の assistant ターンだけに `cache_control` を残し、それより古いターンの cache_control は平文に戻す**こと。breakpoint は積み上げず、最新だけに移す。
 
+:::details breakpoint update
 ```python
 SYSTEM = [
     {
@@ -408,11 +429,13 @@ Turn 3: 5156ms | cached: 1560 | created: 314    ← Turn1+2 まで再利用
 Turn 4: 4615ms | cached: 1874 | created: 316
 Turn 5: 6498ms | cached: 2190 | created: 316
 ```
+:::
 
 ### Bedrock 経由のクライアント生成
 
 クライアント生成とモデル ID を差し替えるだけで、ペイロード形状は同じ。1h TTL は Bedrock + Claude 4.5+ で利用可能。
 
+::: Bedrock
 ```python
 # Bedrock 経由（Anthropic SDK）
 client = anthropic.AnthropicBedrock(aws_region="us-west-2")
@@ -445,25 +468,26 @@ agent = Agent(
     tools=[calculator, current_time],
 )
 ```
+:::
 
 ---
 
 ## よくある勘違いと気づき
 
 - 勘違い：「平均で速い」なら「速い」と言ってよい
-  > 講師の「あなたのクライアントは平均では生きていない」の一言で、ダッシュボードに並んでいた `avg(latency)` を何の疑問もなく週次報告に貼って緑色のままにしていた自分の手癖が露呈した。SLA を語る場では平均ではなく p95 / p99 で語るべきだった。
+  >「あなたのクライアントは平均では生きていない」の一言で、ログを集計した`avg(latency)` を何の疑問もなく週次報告に貼って緑色のままにしていた自分の愚かさが露呈した。SLA を語る場では平均ではなく p95 / p99 で語るべきだった。
 
 - 勘違い：OTPS は `output_tokens / TTC` で計算してよい
-  > 講師がしつこく `output_tokens / (TTC − TTFT)` を強調するのを聞いて、`TTC` で割っていた以前のダッシュボードが「実効スループット」と「decode 速度」を取り違えていたことに気づいた。同じ指標名で違う意味を測っていた、というのは事故の温床だ。
+  > `output_tokens / (TTC − TTFT)` の式が強調されるのを聞いて、`TTC` で割っていた以前の解析では「実効スループット」と「decode 速度」を取り違えていたことに気づいた。同じ指標名で違う意味を測っている、というのはKPIの誤計測の温床である。
 
 - 勘違い：1M context があるからキャッシュは要らない
-  > 1M 入ることと 1M を毎回 prefill することは別の話、と言われた瞬間に立場が逆転した。長い prefix を持つほど caching の旨味は増す、という方が正しい。
+  > 1M 入ることと 1M を毎回 prefill することは別の話。「長い prefix を持つほど caching の旨味は増す」という方が正しい。
 
 - 勘違い：system prompt にタイムスタンプを入れても問題ない
-  > 何の気なしに `f"Current time: {datetime.now()}..."` を system prompt に入れていた既存コードが、永遠に cache miss していた可能性に気づいた。セッション中に手元の本番コードを思い浮かべて青ざめた箇所であり、即座に修正項目に追加した。
+  > 何の気なしに `f"Current time: {datetime.now()}..."` を system prompt に入れていた既存コードが、永遠に cache miss していた可能性に気づいた。Cacheに持たせる情報は **静的** であるべし。
 
 - 勘違い：`cache_control` を付ければ必ず効く
-  > `cache_control` を 1,024 トークン未満のブロックに付けても **エラーが出ずに黙って無視される** という挙動は予想外だった。「効いているはず」と信じ続けて `cache_creation_input_tokens` が 0 のままなのに気づかない、という事故の絵が見えた。
+  > `cache_control` を 1,024 トークン未満のブロックに付けても **エラーが出ずに黙って無視される** という挙動は予想外だった。「効いているはず」と信じ続けて 「`cache_creation_input_tokens` が 0 のままなのに気づかない」という不具合が容易に想像できた。
 
 ---
 
@@ -476,7 +500,7 @@ agent = Agent(
   - 「効いてるはず」で済ませない。CI で同一プロンプトを 2 回叩いて 2 回目の `cache_read_input_tokens > 0` をアサートするテストを入れておく。誰かが system prompt にタイムスタンプを足した瞬間に気づける。
 
 - **Bedrock / Strands の差分にログ層で対応する**
-  - Strands なら `CacheConfig(strategy="auto")` で SDK 任せにでき、旧 API の `cache_tools="default"` は使わない（Issue #1577）。Bedrock 経由では `usage` のフィールド名が camelCase になるため、ログ集約とダッシュボードは両方に対応させる。
+  - Strands なら `CacheConfig(strategy="auto")` で SDK 任せにでき、旧 API の `cache_tools="default"` は使わない（Issue #1577）。Bedrock 経由では `usage` のフィールド名が `camelCase` になるため、ログ集約とダッシュボードは両方に対応させる。
 
 ---
 
@@ -496,7 +520,7 @@ agent = Agent(
 
 ## 章末 — 工学責任と次章へ
 
-第 1 章で「IT の役割は変わる」という takeaway を書いた。コードを書く人から、判断の輪郭を引く人へ、と。
+第 1 章で「IT の役割は変わる」という takeaway を書いた。「コードを書く人から、判断の輪郭を引く人へ」。
 
 この章を経て、その輪郭にもう一本線が足された気がしている。クライアントとの議論の場で「動きます」と言う代わりに、「p99 でこれを満たします」「キャッシュ命中率がこの値を割ったらアラートを上げます」と言える人になる。動くかどうかではなく、どの確率で・どの遅さで・いくらで動くか。それを数字で約束できる立場を、自分から取りに行く。
 
