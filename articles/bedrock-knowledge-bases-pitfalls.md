@@ -111,6 +111,26 @@ Terraform/Terragrunt 構成では、prefix ごとに `aws_bedrockagent_data_sour
 
 EventBridge 等で自動同期パイプラインを組む場合は、特に **アカウントあたり 5 並列** と **API レート 0.1 req/秒** の両方を意識した同時実行制御が必要です。
 
+#### 補足:Office ファイル内の埋め込み画像は処理されない
+
+マルチモーダル KB では、**PPTX / DOCX / XLSX などの Office ファイルは「テキストのみ」として取り込まれます**。スライド内の図や Word 文書内のグラフなど、Office ファイルに埋め込まれた画像は Vision パーシングパイプラインを通らず、無視されます。
+
+> "Bedrock Data Automation as parser: Enables parsing and storing multimodal content as text, supporting **PDFs, images, audio, and video files**."
+> — [Choose a multimodal approach for your Amazon Bedrock knowledge base](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-multimodal-choose-approach.html)
+
+マルチモーダル処理対象の画像形式は以下の通りです。
+
+| 処理方式                      | 対応画像形式                            |
+| ----------------------------- | --------------------------------------- |
+| Nova Multimodal Embeddings    | `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp` |
+| Bedrock Data Automation (BDA) | `.png`, `.jpg`/`.jpeg`                  |
+
+いずれも **単体のファイルとして S3 に配置された画像のみ** が対象です。
+
+**PDF は部分的な例外**で、BDA を使うと PDF 内に含まれる画像・図表を抽出してマルチモーダル処理できます。一方、DOCX / PPTX / XLSX については現時点でこの処理は行われません。
+
+「PowerPoint スライドの図をそのまま KB に取り込む」という要件がある場合は、スライドを PDF でエクスポートして S3 に配置するか、図を PNG/JPEG として個別に書き出す運用が必要です。
+
 ---
 
 ### 1.3 KBのデータソース上限の罠
@@ -137,11 +157,11 @@ KB の設計時に押さえておくべき構造的な上限として、**1 つ�
 
 #### 回避策
 
-| 対策                                               | 概要                                                                | 推奨度                             |
-| -------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------- |
-| **業務ドメイン単位で KB 自体を分割**               | 「人事」「経理」「営業」など意味のあるドメイン単位で複数 KB を構築  | **推奨**                           |
-| 1 データソース内で prefix/メタデータによる論理分割 | 物理的なデータソース数は増やさず、メタデータフィルタで分離          | テナント分離なら明示的フィルタ必須 |
-| Service Quotas からのクォータ引き上げ申請          | データソース数の上限値を引き上げる(承認まで数営業日)                | 緊急対応・特殊要件向け             |
+| 対策                                               | 概要                                                               | 推奨度                             |
+| -------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------- |
+| **業務ドメイン単位で KB 自体を分割**               | 「人事」「経理」「営業」など意味のあるドメイン単位で複数 KB を構築 | **推奨**                           |
+| 1 データソース内で prefix/メタデータによる論理分割 | 物理的なデータソース数は増やさず、メタデータフィルタで分離         | テナント分離なら明示的フィルタ必須 |
+| Service Quotas からのクォータ引き上げ申請          | データソース数の上限値を引き上げる(承認まで数営業日)               | 緊急対応・特殊要件向け             |
 
 #### 補足
 
@@ -318,6 +338,106 @@ response = bedrock_agent_runtime.retrieve(
 - LLM がフィルタすべきクエリの典型パターン
 
 を、**LLM が読んで判断できるレベルで明確に書く** ことが重要です。
+
+---
+
+### 2.3 メタデータ属性の型制約の罠
+
+KB のメタデータ属性は **4 種類の型のみ**サポートされており、値の内容にも細かい制約があります。特に **空文字列は使用不可** という制限は、「未設定時のデフォルトとして空文字を入れておく」という実装パターンでよく踏まれます。
+
+#### 対応する型と制約
+
+| 型            | フィールド        | 制約                                                   |
+| ------------- | ----------------- | ------------------------------------------------------ |
+| `STRING`      | `stringValue`     | **1〜2,048 文字（空文字不可）**                        |
+| `NUMBER`      | `numberValue`     | Double                                                 |
+| `BOOLEAN`     | `booleanValue`    | `true` / `false`                                       |
+| `STRING_LIST` | `stringListValue` | **要素数 1〜10。各要素は 1〜2,048 文字（空文字不可）** |
+
+> The minimum length of `stringValue` is 1. (...) The minimum length of each element of `stringListValue` is 1.
+> — [MetadataAttributeValue - Amazon Bedrock API Reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_MetadataAttributeValue.html)
+
+#### 何が起きるか
+
+- `.metadata.json` のメタデータ値に `""` (空文字) を指定すると、取り込み時に `ValidationException` が返る
+- `STRING_LIST` 型で空配列 `[]` を渡すと同様に失敗する（最低 1 要素必須）
+- 値が未決定なフィールドを空文字で仮置きする実装や、Python 側の `or ""` パターンでハマりやすい
+
+#### 回避策
+
+```python
+# Bad: 空文字をデフォルト値として設定
+metadata = {
+    "category": item.category or "",  # カテゴリ未設定なら ValidationException
+    "tags": item.tags or [],          # 空リストは STRING_LIST では不可
+}
+
+# Good: 値がない場合はキーごと省略する
+metadata = {}
+if item.category:
+    metadata["category"] = item.category
+if item.tags:
+    metadata["tags"] = item.tags  # 最低 1 要素を保証した状態で追加
+```
+
+メタデータは「存在しない」と「空」を区別できないため、**値がない場合はキー自体を省略するのが最も安全**です。取り込み時エラーは `IngestionJob` の `FAILED` 扱いになるため、1.1 と同様に `numberOfDocumentsFailed` で検知が必要です。
+
+---
+
+### 2.4 AOSSとNeptuneでフィルタ演算子の対応が異なる罠
+
+KB のメタデータフィルタリングで使える演算子は、バックエンドのベクターストア（OpenSearch Serverless / Neptune Analytics）によって **対応状況が異なります**。設計時に考慮しておかないと、後からベクターストアを切り替えた際に特定のフィルタが機能しなくなります。
+
+> The following table shows the filter conditions available for each vector store.
+> — [Test and troubleshoot knowledge bases - Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html)
+
+#### 演算子の対応状況
+
+| 演算子                                   | AOSS      | Neptune Analytics | 備考                                              |
+| ---------------------------------------- | --------- | ----------------- | ------------------------------------------------- |
+| `equals` / `notEquals`                   | ○         | ○                 | STRING / NUMBER / BOOLEAN                         |
+| `greaterThan` / `lessThan`               | ○         | ○                 | NUMBER                                            |
+| `in` / `notIn`                           | ○         | ○                 | 値リストに対するメンバーシップ検査                |
+| **`startsWith`**                         | **○**     | **×**             | **AOSS のみ対応**                                 |
+| `stringContains`（文字列バリアント）     | ○         | ○                 | STRING 型に対するサブ文字列検索                   |
+| **`stringContains`（リストバリアント）** | **○**     | **×**             | **AOSS のみ。STRING_LIST の要素内サブ文字列検索** |
+| `listContains`                           | ○（推奨） | △                 | AOSS で最もよくサポートされる                     |
+
+#### 影響が大きいケース
+
+**`startsWith`（前方一致フィルタ）** は AOSS 固有の演算子です。文書パスや ID のプレフィックスで絞り込む設計は Neptune への移行時に代替が必要になります。
+
+**`stringContains` のリストバリアント**は `STRING_LIST` 型の属性に対して「要素のどれかがサブ文字列を含む」検索を行う演算子で、Neptune では動作しません。Neptune では `STRING` 型に対する文字列バリアントのみ使用できます。
+
+```python
+# AOSS では動作するが Neptune では動作しない例 (STRING_LIST のリストバリアント)
+filter_neptune_ng = {
+    "stringContains": {
+        "key": "document_tags",   # STRING_LIST 型の属性
+        "value": "finance"
+    }
+}
+
+# 両ベクターストアで動作させるなら STRING 型 + equals/in で設計を変える
+filter_safe = {
+    "equals": {
+        "key": "category",        # STRING 型の属性
+        "value": "finance"
+    }
+}
+```
+
+#### なぜ差異があるのか
+
+AOSS は Lucene ベースの全文検索エンジンを内包しているため、`startsWith`（プレフィックスクエリ）やリスト要素への部分一致検索などリッチな演算子をネイティブにサポートします。Neptune Analytics はグラフ DB ベースのベクターストアであり、フィルタリングはグラフ走査と組み合わせた独自のクエリエンジン上で実行されるため、サポートできる演算子セットが異なります。
+
+#### 選定指針
+
+| 状況                                     | 推奨アクション                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| AOSS → Neptune への移行を検討中          | `startsWith` / `stringContains` リストバリアント の利用箇所を事前に洗い出す                           |
+| Neptune を初期選定する場合               | `STRING_LIST` + `stringContains` リストバリアントに依存した設計を避ける                               |
+| ベクターストアを後で切り替える可能性あり | 両ストアで動作する演算子（`equals`, `notEquals`, `in`, `notIn`, `greaterThan`, `lessThan`）に限定する |
 
 ---
 
@@ -717,6 +837,71 @@ AOSS の料金は **OCU (OpenSearch Compute Unit)** という単位で課金さ�
 - 同一 Collection Group 内のコレクションは **同一タイプ (search / time series / vector search) のみ** 混在可能
 
 これとタグを組み合わせることで、ある程度マルチテナントのコスト分離が改善される可能性がありますが、本記事執筆時点では Cost Explorer での完全なタグ別表示までは未確認です。
+
+---
+
+### 5.3 AOSSの料金体系の罠
+
+「OpenSearch **Serverless**」という名称から「使った分だけ課金するゼロスタート」を期待しがちですが、**現行の AOSS Classic コレクション（Bedrock KB のデフォルト）は常時課金で、コレクションをまったく使っていなくても最低月 3 万円超のコストが発生します**。ベクターストアの選定時にこれを知らないと、開発環境を 1 か月放置しただけで想定外のコストが積み上がります。
+
+#### OCU (OpenSearch Compute Unit) の仕組み
+
+AOSS の課金単位は **OCU (OpenSearch Compute Unit)** で、Indexing用とSearch用が独立して課金されます。
+
+> "These OCUs always exist, even when there's no indexing or search activity."
+> — [Managing capacity limits for Amazon OpenSearch Serverless](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-scaling.html)
+
+| OCU 種別     | 最低数（冗長あり・本番） | 最低数（冗長なし・開発） |
+| ------------ | ------------------------ | ------------------------ |
+| Indexing OCU | 1 OCU (0.5 × 2 構成)     | 0.5 OCU                  |
+| Search OCU   | 1 OCU (0.5 × 2 構成)     | 0.5 OCU                  |
+| **合計**     | **2 OCU**                | **1 OCU**                |
+
+料金は **$0.24 / OCU-時間**（バージニア北部リージョン）で、Indexing・Search共通の単価です。
+
+#### 「サーバーレス」なのに常時課金になる背景
+
+AOSS の Classic コレクションは、HA を確保するために **インデックスデータを 2 つの AZ にわたって常時レプリカ保持** しています。この HA 構成を維持するために最低 OCU が常駐しており、リクエストがゼロでも課金が止まりません。
+
+これは、Lambda のような「リクエストがなければ $0」という意味でのサーバーレスとは根本的に異なります。**「サーバーを自分で管理しなくてよい」という意味のサーバーレス**であって、コストモデルは常時稼働型のマネージドサービスに近いです。
+
+#### 実際の最低コスト試算
+
+| 構成                             | 月額コスト（目安）                 |
+| -------------------------------- | ---------------------------------- |
+| 本番（冗長あり、2 OCU 常時稼働） | 2 OCU × $0.24 × 730h ≒ **$350/月** |
+| 開発（冗長なし、1 OCU 常時稼働） | 1 OCU × $0.24 × 730h ≒ **$175/月** |
+| ストレージ（別途課金）           | $0.02 / GB-月                      |
+
+これはあくまで **アイドル時の最低コスト**です。データ量が増えてベクターインデックスが RAM を占有するようになると、アイドル時でも追加 OCU が必要になり、コストが上昇します。
+
+#### データ量とコストの相関
+
+AOSS では各 OCU が **120 GiB のホットストレージ（RAM + SSD）** を持ちます。ベクターインデックスはクエリ速度のためにデータをメモリ上に保持するため、**インデックスサイズが増えるほど必要 OCU 数が増加し、アイドル時のコストフロアも上がります**。
+
+```text
+小規模 KB（数万チャンク）    → 最低 OCU で収まりやすい
+中規模 KB（数十〜数百万チャンク）→ インデックスサイズ次第で OCU が増加
+大規模 KB                    → インデックス設計・シャード分割を要検討
+```
+
+#### NextGen コレクションとの違い
+
+2024 年後半から提供が開始された **NextGen コレクション**は、10 分間アクティビティがなければ **OCU がゼロにスケールダウン**します。
+
+> "There is no minimum OCU requirement — Indexing and Search OCUs scale to zero after 10 minutes of inactivity."
+> — [Amazon OpenSearch Serverless - Pricing](https://aws.amazon.com/opensearch-service/pricing/)
+
+ただし、**本記事執筆時点では Bedrock KB のマネージド AOSS は Classic コレクションを使用しており、NextGen への移行パスは未提供**です。Bedrock KB のカスタムベクターストアとして自前の AOSS NextGen コレクションを使う構成は別途検討が必要です。
+
+#### 回避策・選定指針
+
+| 状況                                   | 推奨アクション                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| 開発・検証環境で AOSS コストを抑えたい | 冗長設定を無効化（`standbyReplicas: DISABLED`）して 1 OCU 構成にする            |
+| 使い捨て検証でコストゼロにしたい       | pgvector (Aurora Serverless v2 / RDS) や Pinecone 等を検討                      |
+| 本番でコスト予測を立てたい             | インデックスサイズ（GB）をベースに OCU 必要数を試算し、$0.24/OCU-h で月額を試算 |
+| KB のデフォルト AOSS を使う前提        | 月 $350 を固定費として予算に組み込む                                            |
 
 ---
 
