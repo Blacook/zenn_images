@@ -8,7 +8,7 @@ free: true
 
 ## はじめに — Surprise RFP に耐えるエージェントを 60 分で組む
 
-Bootcamp の最終演習として用意されていたのは、開発用 RFP に最適化したエージェントが「最終評価で初めて見る Surprise RFP」に対して何点を取れるかを測る 60 分間の課題だった。開発用入力に対する完成度ではなく、未知入力に対する generalization が評価対象になる、という設計が明示されている。本章では、その課題の構造と、過去 8 章の道具（プロンプト 3 層責務、eval-driven、context engineering、sub-agent）がここでどう一本のシステムに統合されるかを整理する。本連載の最終演習章でもあるため、章末に Bootcamp 全体の総括と次章への導入を置く。
+Bootcamp の最終演習として用意されていたのは、開発用 RFP に最適化したエージェントが「最終評価で初めて見る Surprise RFP」に対して何点を取れるかを測る 60 分間の課題だった。開発用入力に対する完成度ではなく、未知入力に対する汎化が評価対象になる、という設計が明示されている。本章では、その課題の構造と、過去 8 章の道具（プロンプト 3 層責務、Eval-driven、context engineering、sub-agent）がどのように一本のシステムに統合されるかを整理する。
 
 ## 題材 — Helios Security の RFP 回答自動化
 
@@ -22,12 +22,12 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 アーキテクチャは固定で、`claude-sonnet-4-5` を使った 5 段階のパイプラインを Messages API の tool use loop として組む。
 
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  PARSE   │───▶│ RETRIEVE │───▶│  DRAFT   │───▶│  REVIEW  │───▶│  EXPORT  │
-│ Qに分解  │    │ KB検索   │    │ 引用付き │    │ 横断整合 │    │ JSON     │
-│ +カテゴリ│    │ via tool │    │ 回答生成 │    │ 性チェック│    │ 構造化   │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+```mermaid
+graph LR
+  A[PARSE\nQに分解\n+カテゴリ] --> B[RETRIEVE\nKB検索\nvia tool]
+  B --> C[DRAFT\n引用付き\n回答生成]
+  C --> D[REVIEW\n横断整合\n性チェック]
+  D --> E[EXPORT\nJSON\n構造化]
 ```
 
 ノートブック前半の質問票はあくまで「開発用」で、終盤の Part 9 で Surprise RFP がぶつけられる。Surprise RFP には開発用には存在しない failure mode が意図的に仕込まれており、開発用入力に overfit したエージェントはそこで崩れる構造になっている。
@@ -37,11 +37,11 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 ### Pressure Test を「先に」設計する
 
 :::message
-**原則**: Pressure Test は最終評価のためのチェックリストではなく、エージェント設計に先んじて置く設計図として扱う。失敗モードの inventory を先に確定し、各失敗を防ぐ責務をどの層に置くかを設計段階で決める。
+**原則**: Pressure Test は最終評価のためのチェックリストではなく、エージェント設計に先んじて置く設計図として扱う。失敗パターンのリスト（inventory）を先に確定し、各失敗を防ぐ責務をどの層に置くかを設計段階で決める。
 :::
 
 :::message alert
-**アンチパターン**: 実装してから「テストでも書くか」と eval を後追いで作る。この順序では eval が「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。
+**アンチパターン**: 実装してから「テストでも書くか」と Eval を後追いで作る。この順序では Eval が「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。
 :::
 
 #### **ハンズオンでの具体例**
@@ -51,7 +51,7 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 | パターン | 意図 | 「良い」挙動 |
 | --- | --- | --- |
 | **Warm-up** | 直球の単発取得 | 高信頼度、レイテンシ値などの数値が citation 付きで返る |
-| **Compound retrieval** | 2 つの KB エントリの統合 | `search_kb` を 2 回呼び、両カテゴリの情報を統合 |
+| **Compound retriEval** | 2 つの KB エントリの統合 | `search_kb` を 2 回呼び、両カテゴリの情報を統合 |
 | **Hallucination trap** | KB に存在しないトピック（例: Kubernetes runtime protection） | confidence=low、`no KB coverage` フラグ、CNI 名などを捏造しない |
 | **Negation / false-premise** | 「データを region 外に出さないことを確認してください」 | KB の region 内主張を確認しつつ、support/telemetry 例外が未文書化であることを明示 |
 | **Consistency review habit** | 過去回答（Q2）への参照 + KB に無い air-gapped | DHS sponsorship を答えつつ、air-gapped を `not documented` として切り出す |
@@ -74,10 +74,10 @@ Bootcamp の最終演習として用意されていたのは、開発用 RFP に
 
 -----
 
-### 3-layer responsibility model を実装版に落とす
+### 3 層責務モデルを実装版に落とす
 
 :::message
-**原則**: プロンプトとツールは「システムプロンプト = モチベーション付け / tool description = 文脈付け / tool 実装 = 安全網」の 3 層で責務を分割する。同じ責務を複数層に書くのではなく、各層に固有の責務を割り当てる。
+**原則**: プロンプトとツールは「`システムプロンプト` = モチベーション付け / `tool description` = 文脈付け / `tool 実装` = 安全網」の 3 層で責務を分割する。同じ責務を複数層に書くのではなく、各層に固有の責務を割り当てる。
 :::
 
 :::message alert
@@ -106,7 +106,7 @@ RFP エージェントでの 3 層対応は以下の通り。
 ### Output contract を JSON で固定する
 
 :::message
-**原則**: エージェントの出力は固定された JSON contract で受ける。後段の処理（review、export、集計）はこの contract を前提に書く。
+**原則**: エージェントの出力は固定された JSON contract で受ける。後段の処理（review、export、集計）はこの 制約を前提に書く。
 :::
 
 :::message alert
@@ -145,16 +145,16 @@ Reviewer の出力契約は status (`pass` / `flag`) と `contradiction_with_pri
 ### Eval は accuracy / sources / consistency / calibration / edge cases / latency / cost で多軸化する
 
 :::message
-**原則**: 単一スコアではエージェントの品質を測れない。最低でも以下 7 軸の assertion を eval suite に組み込む。
+**原則**: 単一スコアではエージェントの品質を測れない。最低でも以下 7 軸の assertion を Eval suite に組み込む。
 :::
 
-- Accuracy: 回答が KB の事実と一致するか
-- Source attribution: citation が KB の実在 ID か
-- Consistency: 同一 RFP 内の他回答との整合性
-- Confidence calibration: confidence=low の回答に対して実際に KB coverage が無いか
-- Edge cases: Hallucination trap / Negation / False-premise への挙動
-- Latency: per-question / per-RFP の応答時間
-- Cost: per-RFP の API コスト
+- `Accuracy`: 回答が KB の事実と一致するか
+- `Source attribution`: citation が KB の実在 ID か
+- `Consistency`: 同一 RFP 内の他回答との整合性
+- `Confidence calibration`: confidence=low の回答に対して実際に KB coverage が無いか
+- `Edge cases`: Hallucination trap / Negation / False-premise への挙動
+- `Latency`: per-question / per-RFP の応答時間
+- `Cost`: per-RFP の API コスト
 
 :::message alert
 **アンチパターン**: accuracy だけで採点する。confidence calibration が壊れたエージェント（low と言うべき場面で high を返す）を検出できない。
@@ -162,14 +162,14 @@ Reviewer の出力契約は status (`pass` / `flag`) と `contradiction_with_pri
 
 #### **ハンズオンでの具体例**
 
-ノートブック Part 8 は 5 軸 assertion を Part 5 の実装より前に書くタスクとして配置されている。実装後ではなく実装前に書くことで、eval は「望ましい挙動の定義」として機能する。
+ノートブック Part 8 は 5 軸 assertion を Part 5 の実装より前に書くタスクとして配置されている。実装後ではなく実装前に書くことで、Eval は「望ましい挙動の定義」として機能する。
 
 -----
 
 ### 3-line rule で回帰を防ぐ
 
 :::message
-**原則**: Surprise RFP で失敗が観測されたら、修正はシステムプロンプト / tool description / tool 実装の各層に 1 行ずつ、合計 3 行までに抑える。それ以上の変更は別ブランチに切る。
+**原則**: Surprise RFP で失敗が観測されたら、修正は`システムプロンプト` / `tool description` / `tool 実装`の各層に 1 行ずつ、合計 3 行までに抑える。それ以上の変更は別ブランチに切る。
 :::
 
 :::message alert
@@ -182,19 +182,19 @@ Hallucination trap で失敗した場合の修正は、システムプロンプ�
 
 -----
 
-### エージェントには Sonnet を基本に置く
+### エージェントには `Sonnet` を基本に置く
 
 :::message
-**原則**: マルチステージ・tool use を含むエージェントは Sonnet を基本選択肢とする。Opus は推論依存度が高い単一タスクで、Haiku は単純分類などレイテンシ要件が厳しい場面でのみ採用する。
+**原則**: マルチステージ・tool use を含むエージェントは `Sonnet` を基本選択肢とする。`Opus` は推論依存度が高い単一タスクで、`Haiku` は単純分類などレイテンシ要件が厳しい場面でのみ採用する。
 :::
 
 :::message alert
-**アンチパターン**: 全段に Opus を使う（コスト過剰）、または全段に Haiku を使う（マルチステージで失敗が連鎖する）。
+**アンチパターン**: 全段に `Opus` を使う（コスト過剰）、または全段に `Haiku` を使う（マルチステージで失敗が連鎖する）。
 :::
 
 #### **ハンズオンでの具体例**
 
-第 8 章で観測された通り、Haiku は単純分類タスクで $0.35 / 1K calls、Opus は $20.10 / 1K calls。RFP の 5 段階パイプラインで Haiku を使うと各段の精度ロスが乗算で増幅し、Opus を使うとコスト構造が破綻する。Sonnet 4.5 が中間点として実用解になる。
+第 8 章で観測された通り、`Haiku` は単純分類タスクで $0.35 / 1K calls、`Opus` は $20.10 / 1K calls。RFP の 5 段階パイプラインで `Haiku` を使うと各段の精度ロスが乗算で増幅し、`Opus` を使うとコスト構造が破綻する。`Sonnet` が中間点として実用解になる。
 
 -----
 
@@ -210,7 +210,7 @@ Hallucination trap で失敗した場合の修正は、システムプロンプ�
 
 #### **ハンズオンでの具体例**
 
-ハッカソンの 60 分は MVP（Parse + Retrieve + Draft）+ Review までを射程とし、memory tool / compaction は別演習の領域とする。Production 投入時は Effective context engineering の文書化された 3 プリミティブ（tool result clearing / compaction / memory tool）を順に追加する。
+ハッカソンの 60 分は MVP（Parse + Retrieve + Draft）+ Review までを射程とし、memory tool / compaction は別演習の領域としていた。Production 投入時は Effective context engineering の文書化された 3 プリミティブ（tool result clearing / compaction / memory tool）を順に追加する。
 
 ## 押さえておきたいコード/設定
 
@@ -222,20 +222,16 @@ Hallucination trap で失敗した場合の修正は、システムプロンプ�
 SEARCH_KB_TOOL = {
     "name": "search_kb",
     "description": (
-        "Search the Helios Security knowledge base for content relevant "
-        "to an RFP question.\n\n"
+        "Search the Helios Security knowledge base for content relevant to an RFP question.\n\n"
         "Categories (use one per call):\n"
         "- technical: architecture, SLAs, integrations, threat detection\n"
-        "- compliance: certifications (SOC2, ISO27001, FedRAMP, GDPR),"
-        " sub-processors, data residency\n"
+        "- compliance: certifications (SOC2, ISO27001, FedRAMP, GDPR), sub-processors, data residency\n"
         "- pricing: per-seat pricing, multi-year discounts, renewal caps\n"
         "- company-info: support tiers, channels, response times, company background\n\n"
         "Query guidance:\n"
         "- 3-8 word natural language queries work best\n"
-        "- For compound questions spanning two categories, "
-        "call this tool twice with different categories\n"
-        "- If you receive an empty result, do NOT fabricate an answer. "
-        "Flag confidence=low and report 'no KB coverage' in the response."
+        "- For compound questions spanning two categories, call this tool twice with different categories\n"
+        "- If you receive an empty result, do NOT fabricate an answer. Flag confidence=low and report 'no KB coverage' in the response."
     ),
     "input_schema": {
         "type": "object",
@@ -280,22 +276,18 @@ SYSTEM_PROMPT = """\
 You are an RFP response specialist for Helios Security, a cybersecurity vendor.
 
 ## Non-negotiable rules
-- ALWAYS call `search_kb` before drafting any answer. Never recall product
-  facts, certifications, or pricing from memory.
-- If `search_kb` returns no matches, set confidence="low" and explicitly
-  state "no KB coverage" in the answer. Do not fabricate.
-- For compound questions spanning two categories, call `search_kb` twice
-  (once per category) before drafting.
+- ALWAYS call `search_kb` before drafting any answer. Never recall product facts, certifications, or pricing from memory.
+- If `search_kb` returns no matches, set confidence="low" and explicitly state "no KB coverage" in the answer. Do not fabricate.
+- For compound questions spanning two categories, call `search_kb` twice (once per category) before drafting.
 - Every answer must cite the source IDs returned by `search_kb`.
 
 ## Output contract
-Return JSON with fields: question_id, category, answer, sources, confidence,
-flags. `flags` is a list; include "no_kb_coverage" or "false_premise" when
-applicable.
+Return JSON with fields: question_id, category, answer, sources, confidence, flags. 
+`flags` is a list; include "no_kb_coverage" or "false_premise" when applicable.
 
 ## Consistency
-You will see all previously-drafted answers as part of context. If a new
-answer contradicts a prior one (dates, certifications, numbers), flag it.
+You will see all previously-drafted answers as part of context. 
+If a new answer contradicts a prior one (dates, certifications, numbers), flag it.
 """
 ```
 
@@ -316,34 +308,30 @@ REVIEWER_OUTPUT_SCHEMA = {
 }
 ```
 
-`status=flag` の場合は `contradiction_with_prior_id` を必ず埋める制約を schema 側で固定する。引用なしのフラグは契約違反として後段ではじける。
+`status=flag` の場合は `contradiction_with_prior_id` を必ず埋める制約を schema 側で固定する。引用なしのフラグは契約違反として後段ではじくことができる。
 
 ## よくある勘違いと気づき
 
-ここからは個人的な印象を含む。60 分のなかで自分の癖が立て続けに崩されたので書き残しておく。
+- 勘違い：初めから「完璧なエージェント」を作り込むべきだ
+  > Helios の本番想定は Confluence、Salesforce、SharePoint、社内 RAG が並ぶ世界で、それを 60 分で本物のコネクタとして繋ぎたい衝動が走った。ノートブックの KB はディクショナリのモックだが、考えてみると評価対象はエージェントの **インターフェースの正しさ** であって、バックエンドの実装ではない。実 KB に繋ぐのは本番投入の段階の話で、設計判断の検証にはモックで十分だった。
 
-- 勘違い：「本物の統合」を 60 分で作り込むべきだ
-  > Helios の本番想定は Confluence、Salesforce、SharePoint、社内 RAG が並ぶ世界で、それを 60 分で本物のコネクタとして繋ぎたい衝動が走った。ノートブックの KB はディクショナリのモックだが、考えてみると評価対象はエージェントの **インターフェースの正しさ** であって、バックエンドの実装ではない。実 KB に繋ぐのは本番投入の段階の話で、設計判断の検証にモックは十分だった。
-
-- 勘違い：eval suite は実装が動いてから書けばよい
-  > Part 8 の 5 軸 assertion は Part 5 の実装より先に書くべきものだったが、実装してから「テストでも書くか」と思いそうになった。その時点で eval は「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。第 5 章・第 6 章で扱った eval-driven の規律が、Surprise RFP の前で一番厳格に問われる場面だった。
+- 勘違い：Eval suite は実装が動いてから書けばよい
+  > Part 8 の 5 軸 assertion は Part 5 の実装より先に書くべきものだったが、実装してから「テストでも書くか」という思考に陥った。その時点で Eval は「望ましい挙動を定義する向き」ではなく「現在の挙動を正当化する向き」に引っ張られる。第 5 章・第 6 章で扱った Eval-driven の規律が、Surprise RFP の前で一番厳格に問われる場面だった。
 
 - 勘違い：1 つの回答を完璧にすれば全体スコアも上がる
-  > 「Q3 の Pricing 回答が citation 付きで返るようになった、これを磨こう」と詰めているうちに、Q1・Q2・Q4・Q5 のレビューが止まる。最適化対象は **全体スコアの distribution** であって個別回答ではない。20 問のうち 16 問が C+ なら、4 問を B+ にすることより、システムプロンプトに 1 行追加して全 20 問の底上げを狙うほうが優先度が高い。これを忘れがちなことを自覚した。
+  > 「Q3 の Pricing 回答が citation 付きで返るようになった、これを磨こう」と詰めているうちに、Q1・Q2・Q4・Q5 のレビューが止まる。最適化対象は **全体スコアの distribution** であって個別回答ではない。20 問のうち 16 問が C+ なら、4 問を B+ にすることより、システムプロンプトに 1 行追加して全 20 問の底上げを狙うほうが優先度が高い。
 
 - 勘違い：同じ責務を複数層で重複防御すれば安全になる
-  > 第 4 章のショッピングアシスタント eval で 50% → 100% にジャンプした学びが、ここで「同じ責務を 3 箇所で重複防御する」のではなく「各層に異なる責務がある」という形で結晶化した。「うまく書く」のではなく「適切なレイヤーに書く」が判断軸だ、というのを自分のコードで体感した。
+  > 第 4 章のショッピングアシスタント Eval で 50% → 100% にジャンプした学びが、ここで「同じ責務を 3 箇所で重複防御する」のではなく「各層に異なる責務がある」という形で結晶化した。「うまく書く」のではなく「適切なレイヤーに書く」が判断軸だ、というのを体感した。
 
 ## 現場で実践したいこと
 
-教室を出るとき、次のスプリントから実務でやるべきことが具体的に置き換わって見えた。
-
-- **PRD レベルから先に eval を書く**
+- **PRD レベルから先に Eval を書く**
   - 第 6 章で扱った PM 巻き込みの話を、最初の 1 案件で必ず実践する。assertion は 7 軸（accuracy / sources / consistency / calibration / edge cases / latency / cost）で固定し、PRD の段階で PM・SE と一緒に書く。
-- **Pressure Test を最初に設計し、eval suite に組み込む**
+- **Pressure Test を最初に設計し、Eval suite に組み込む**
   - Warm-up / Compound / Hallucination / Negation / Consistency review の 5 パターンを最初から組み込み、開発用入力で「成功している」挙動が未知入力で崩れる予兆を事前に検出する仕組みを持つ。
 - **3 行ルールで Surprise 失敗に対応する**
-  - 失敗を見たら、修正は 3 層に各 1 行 — システムプロンプト / tool description / tool 実装 — に抑え、それ以上の変更は別ブランチに切る。
+  - 失敗を見たら、修正は 3 層に各 1 行 — システムプロンプト / tool description / tool 実装 — に抑え、**それ以上の変更は別ブランチ** に切る。
 - **Sub-agent には verification 義務を必ず入れる**
   - Review エージェントには「矛盾を見つけたら、その矛盾の根拠を元回答の ID 引用と共に出力する。引用できないものはフラグしてはならない」と明示で渡す。これがないと無内容な肯定が返る。
 - **1 スプリント以内に短命で回す**
@@ -359,6 +347,6 @@ REVIEWER_OUTPUT_SCHEMA = {
 
 ## 章末 — Bootcamp 全体の総括と次章へ
 
-ハッカソンを最後の演習として、2 日間で渡された道具と語彙はここで出揃った。プロンプトの 3 層責務、eval-driven、context engineering、sub-agent、cost / latency トレードオフ — それぞれが単独のテクニックではなく、ひとつのエージェントを成立させるための連結した部品として並んだ。連載全体を一枚絵で振り返り、教室を出たあと何を続けていくかを、次章でまとめる。
+ハッカソンを最後の演習として、2 日間で叩き込まれた原則・ベストプラクティスはここで出揃った。プロンプトの 3 層責務、Eval-driven、context engineering、sub-agent、cost / latency トレードオフ — それぞれが単独のテクニックではなく、ひとつのエージェントを成立させるための一貫した基本要素として理解できた。連載全体を一枚絵で振り返り、Bootcampを終えて、何を意識づけていくべきかを、次章でまとめる。
 
 → 次章: [10-conclusion](./10-conclusion.md)
